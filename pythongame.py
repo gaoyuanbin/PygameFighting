@@ -1,5 +1,72 @@
 import random
 
+class Player:
+    def __init__(self, x, y, maxhp, attacks, size=40):
+        self.x = x
+        self.y = y
+        self.size = size
+
+        self.maxhp = maxhp
+        self.hp = maxhp
+
+        self.attacks = attacks
+
+        self.dir = (1, 0)
+
+        self.attack = None
+        self.cooldown = 0
+        self.anim = 0
+        self.hit = False
+
+    @property
+    def rect(self):
+        return pygame.Rect(self.x, self.y, self.size, self.size)
+
+    def move(self, dx, dy, speed, width, height):
+        self.x += dx * speed
+        self.y += dy * speed
+        self.dir = (dx, dy)
+
+        self.x = max(0, min(self.x, width - self.size))
+        self.y = max(0, min(self.y, height - self.size))
+
+    def start_attack(self, name):
+        if self.cooldown == 0:
+            self.attack = name
+            self.anim = self.attacks[name]["frames"]
+            self.cooldown = self.attacks[name]["cooldown"]
+            self.hit = False
+
+    def update_attack_timers(self):
+        if self.cooldown > 0:
+            self.cooldown -= 1
+
+        if self.anim > 0:
+            self.anim -= 1
+            if self.anim == 0:
+                self.attack = None
+
+    def dash_move(self, width, height):
+        if self.attack == "dash" and self.anim > 0:
+            dx, dy = self.dir
+            speed = self.attacks["dash"]["speed"]
+            self.move(dx, dy, speed, width, height)
+
+    def get_hitbox(self):
+        if not self.attack:
+            return None
+
+        atk = self.attacks[self.attack]
+        dx, dy = self.dir
+
+        if dx == 1:
+            return pygame.Rect(self.x + self.size, self.y, atk["size"], self.size)
+        if dx == -1:
+            return pygame.Rect(self.x - atk["size"], self.y, atk["size"], self.size)
+        if dy == 1:
+            return pygame.Rect(self.x, self.y + self.size, self.size, atk["size"])
+        if dy == -1:
+            return pygame.Rect(self.x, self.y - atk["size"], self.size, atk["size"])
 
 def draw_arrow(screen, rect, direction, color):
     dx, dy = direction
@@ -75,7 +142,94 @@ def main_menu(screen, clock):
 
         pygame.display.flip()
 
+def character_select(screen, clock):
+    font_title = pygame.font.SysFont(None, 72)
+    font_big = pygame.font.SysFont(None, 54)
+    font_small = pygame.font.SysFont(None, 28)
 
+    p1_index = 0
+    p2_index = 1
+    p1_locked = False
+    p2_locked = False
+
+    while True:
+        clock.tick(60)
+        screen.fill((15, 15, 20))
+
+        title = font_title.render("CHARACTER SELECT", True, (240, 240, 240))
+        screen.blit(title, title.get_rect(center=(WIDTH // 2, 60)))
+
+        # Instructions
+        instr1 = font_small.render("P1: A/D to choose, E to lock", True, (180, 180, 180))
+        instr2 = font_small.render("P2: LEFT/RIGHT to choose, / to lock", True, (180, 180, 180))
+        instr3 = font_small.render("ESC to cancel", True, (140, 140, 140))
+        screen.blit(instr1, (60, 110))
+        screen.blit(instr2, (60, 140))
+        screen.blit(instr3, (60, 170))
+
+        # Display P1 / P2 selections
+        p1_char = CHARACTERS[p1_index]
+        p2_char = CHARACTERS[p2_index]
+
+        left_box = pygame.Rect(100, 230, 350, 260)
+        right_box = pygame.Rect(WIDTH - 450, 230, 350, 260)
+
+        pygame.draw.rect(screen, (40, 40, 50), left_box, border_radius=12)
+        pygame.draw.rect(screen, (40, 40, 50), right_box, border_radius=12)
+
+        # P1
+        pygame.draw.rect(screen, p1_char["body"], (left_box.x + 30, left_box.y + 70, 80, 80))
+        p1_name = font_big.render(p1_char["name"], True, (255, 255, 255))
+        screen.blit(p1_name, (left_box.x + 130, left_box.y + 70))
+
+        p1_stats = font_small.render(f"HP: {p1_char['maxhp']}   SPEED: {p1_char['speed']}", True, (200, 200, 200))
+        screen.blit(p1_stats, (left_box.x + 130, left_box.y + 130))
+
+        p1_lock = font_small.render("LOCKED" if p1_locked else "NOT LOCKED", True, (100, 255, 100) if p1_locked else (255, 180, 80))
+        screen.blit(p1_lock, (left_box.x + 130, left_box.y + 170))
+
+        # P2
+        pygame.draw.rect(screen, p2_char["body"], (right_box.x + 30, right_box.y + 70, 80, 80))
+        p2_name = font_big.render(p2_char["name"], True, (255, 255, 255))
+        screen.blit(p2_name, (right_box.x + 130, right_box.y + 70))
+
+        p2_stats = font_small.render(f"HP: {p2_char['maxhp']}   SPEED: {p2_char['speed']}", True, (200, 200, 200))
+        screen.blit(p2_stats, (right_box.x + 130, right_box.y + 130))
+
+        p2_lock = font_small.render("LOCKED" if p2_locked else "NOT LOCKED", True, (100, 255, 100) if p2_locked else (255, 180, 80))
+        screen.blit(p2_lock, (right_box.x + 130, right_box.y + 170))
+
+        # If both locked, return chosen characters
+        if p1_locked and p2_locked:
+            return p1_char, p2_char
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return None, None
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return None, None
+
+                # P1 choose (A/D) and lock (E)
+                if not p1_locked:
+                    if event.key == pygame.K_a:
+                        p1_index = (p1_index - 1) % len(CHARACTERS)
+                    elif event.key == pygame.K_d:
+                        p1_index = (p1_index + 1) % len(CHARACTERS)
+                    elif event.key == pygame.K_e:
+                        p1_locked = True
+
+                # P2 choose (LEFT/RIGHT) and lock (/)
+                if not p2_locked:
+                    if event.key == pygame.K_LEFT:
+                        p2_index = (p2_index - 1) % len(CHARACTERS)
+                    elif event.key == pygame.K_RIGHT:
+                        p2_index = (p2_index + 1) % len(CHARACTERS)
+                    elif event.key == pygame.K_SLASH:
+                        p2_locked = True
+
+        pygame.display.flip()
 
 ATTACKS = {
     "normal": {
@@ -111,13 +265,60 @@ P2_COLORS = {
     "dash": (200, 200, 255)
 }
 
+# --- Characters (multiplayer only) ---
+# Each character can override maxhp, speed, attacks, and colors.
+# --- Characters (multiplayer only) ---
+# Each character can override maxhp, speed, attacks, and colors.
+
+CHARACTERS = [
+    {
+        "id": "rock",
+        "name": "ROCK",
+        "maxhp": 140,
+        "speed": 7,
+        "attacks": {
+            "normal": {"dmg": 14, "size": 45, "frames": 10, "cooldown": 30},
+            "super":  {"dmg": 30, "size": 140, "frames": 20, "cooldown": 70},
+            "dash":   {"dmg": 10, "size": 40, "frames": 16, "cooldown": 35, "speed": 40},
+        },
+        "colors": {"normal": (200, 200, 200), "super": (160, 160, 160), "dash": (220, 220, 220)},
+        "body": (120, 120, 120),
+    },
+    {
+        "id": "paper",
+        "name": "PAPER",
+        "maxhp": 100,
+        "speed": 10,
+        "attacks": {
+            "normal": {"dmg": 9, "size": 90, "frames": 10, "cooldown": 26},
+            "super":  {"dmg": 22, "size": 300, "frames": 18, "cooldown": 60},
+            "dash":   {"dmg": 12, "size": 60, "frames": 18, "cooldown": 28, "speed": 45},
+        },
+        "colors": {"normal": (255, 235, 180), "super": (255, 210, 120), "dash": (255, 240, 210)},
+        "body": (220, 200, 150),
+    },
+    {
+        "id": "scissors",
+        "name": "SCISSORS",
+        "maxhp": 80,
+        "speed": 13,
+        "attacks": {
+            "normal": {"dmg": 8, "size": 55, "frames": 8, "cooldown": 18},
+            "super":  {"dmg": 18, "size": 120, "frames": 16, "cooldown": 50},
+            "dash":   {"dmg": 14, "size": 50, "frames": 18, "cooldown": 20, "speed": 55},
+        },
+        "colors": {"normal": (255, 140, 140), "super": (255, 90, 90), "dash": (255, 180, 180)},
+        "body": (200, 70, 70),
+    },
+
+]
 import pygame
 import sys
 
 # --- setup ---
 pygame.init()
 
-WIDTH, HEIGHT = 1000, 600
+WIDTH, HEIGHT = (1000, 600)
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Pygame fighting")
 
@@ -125,8 +326,6 @@ clock = pygame.time.Clock()
 
 # --- player ---
 font = pygame.font.SysFont(None, 80)
-p1_dir = (1, 0)  # (x, y)
-p2_dir = (-1, 0)
 singleplayer = False
 countdown = 120
 win = False
@@ -134,22 +333,8 @@ running = True
 winner_text = ""
 player_size = 40
 maxhp = 100
-player_x = 10
-player_y = 10
-player2_x = 800
-player2_y = 400
 speed = 10
-p1hp = maxhp
-p2hp = maxhp
-p1_attack = None
-p1_cd = 0
-p1_anim = 0
-p1_hit = False
 
-p2_attack = None
-p2_cd = 0
-p2_anim = 0
-p2_hit = False
 
 
 DIFFICULTY = "easy"
@@ -202,29 +387,38 @@ while running:
     if menu_result == "singleplayer":
         singleplayer = True
         DIFFICULTY = selected_difficulty
+
+        # singleplayer uses your defaults
+        p1 = Player(10, 10, maxhp, ATTACKS)
+        p2 = Player(800, 400, maxhp, ATTACKS)
+
+        p1_speed = speed
+        p2_speed = speed
+        P1_ATTACK_COLORS = P1_COLORS
+        P2_ATTACK_COLORS = P2_COLORS
+        p1_body_color = (200, 50, 50)
+        p2_body_color = (50, 50, 200)
+
     else:
         singleplayer = False
 
-    # --- RESET GAME STATE ---
-    player_x = 10
-    player_y = 10
-    player2_x = 800
-    player2_y = 400
+        c1, c2 = character_select(screen, clock)
+        if c1 is None:  # cancelled
+            continue
 
-    p1hp = maxhp
-    p2hp = maxhp
+        p1 = Player(10, 10, c1["maxhp"], c1["attacks"])
+        p2 = Player(800, 400, c2["maxhp"], c2["attacks"])
 
-    p1_attack = None
-    p2_attack = None
-    p1_cd = 0
-    p2_cd = 0
-    p1_anim = 0
-    p2_anim = 0
-    p1_hit = False
-    p2_hit = False
+        p1_speed = c1["speed"]
+        p2_speed = c2["speed"]
+        P1_ATTACK_COLORS = c1["colors"]
+        P2_ATTACK_COLORS = c2["colors"]
+        p1_body_color = c1["body"]
+        p2_body_color = c2["body"]
+    p1 = Player(10, 10, maxhp, ATTACKS)
+    p2 = Player(800, 400, maxhp, ATTACKS)
 
-    p1_dir = (1, 0)
-    p2_dir = (-1, 0)
+
 
     win = False
     winner_text = ""
@@ -253,285 +447,143 @@ while running:
         # --- input ---
         # Player 1
         if keys[pygame.K_a]:
-            player_x -= speed
-            p1_dir = (-1, 0)
+            p1.move(-1, 0, p1_speed, WIDTH, HEIGHT)
         if keys[pygame.K_d]:
-            player_x += speed
-            p1_dir = (1, 0)
+            p1.move(1, 0, p1_speed, WIDTH, HEIGHT)
         if keys[pygame.K_w]:
-            player_y -= speed
-            p1_dir = (0, -1)
+            p1.move(0, -1, p1_speed, WIDTH, HEIGHT)
         if keys[pygame.K_s]:
-            player_y += speed
-            p1_dir = (0, 1)
+            p1.move(0, 1, p1_speed, WIDTH, HEIGHT)
 
         # Player 2
         if singleplayer:
             preset = AI_PRESETS[DIFFICULTY]
 
-            dx = player_x - player2_x
-            dy = player_y - player2_y
+            dx = p1.x - p2.x
+            dy = p1.y - p2.y
 
             if abs(dx) > abs(dy):
-                p2_dir = (1, 0) if dx > 0 else (-1, 0)
-                player2_x += speed * p2_dir[0]
+                direction = 1 if dx > 0 else -1
+                p2.move(direction, 0, speed, WIDTH, HEIGHT)
             else:
-                p2_dir = (0, 1) if dy > 0 else (0, -1)
-                player2_y += speed * p2_dir[1]
+                direction = 1 if dy > 0 else -1
+                p2.move(0, direction, speed, WIDTH, HEIGHT)
 
             # retreat (not OG)
             if DIFFICULTY != "og":
                 if abs(dx) + abs(dy) < 80 and random.random() < preset["retreat_chance"]:
-                    player2_x -= p2_dir[0] * speed
-                    player2_y -= p2_dir[1] * speed
+                    p2.move(-p2.dir[0], -p2.dir[1], speed, WIDTH, HEIGHT)
         else:
             # Player 2 (human)
             if keys[pygame.K_LEFT]:
-                player2_x -= speed
-                p2_dir = (-1, 0)
+                p2.move(-1, 0, p2_speed, WIDTH, HEIGHT)
             if keys[pygame.K_RIGHT]:
-                player2_x += speed
-                p2_dir = (1, 0)
+                p2.move(1, 0, p2_speed, WIDTH, HEIGHT)
+
             if keys[pygame.K_UP]:
-                player2_y -= speed
-                p2_dir = (0, -1)
+                p2.move(0, -1, p2_speed, WIDTH, HEIGHT)
+
             if keys[pygame.K_DOWN]:
-                player2_y += speed
-                p2_dir = (0, 1)
+                p2.move(0, 1, p2_speed, WIDTH, HEIGHT)
+
 
         # Player 1 attacks
-        if p1_cd == 0:
-            if keys[pygame.K_r]:
-                p1_attack = "super"
-                p1_anim = ATTACKS["super"]["frames"]
-                p1_cd = ATTACKS["super"]["cooldown"]
-                p1_hit = False
-            elif keys[pygame.K_q]:
-                p1_attack = "dash"
-                p1_anim = ATTACKS["dash"]["frames"]
-                p1_cd = ATTACKS["dash"]["cooldown"]
-                p1_hit = False
-            elif keys[pygame.K_e]:
-                p1_attack = "normal"
-                p1_anim = ATTACKS["normal"]["frames"]
-                p1_cd = ATTACKS["normal"]["cooldown"]
-                p1_hit = False
-
+        if keys[pygame.K_r]:
+            p1.start_attack("super")
+        elif keys[pygame.K_q]:
+            p1.start_attack("dash")
+        elif keys[pygame.K_e]:
+            p1.start_attack("normal")
         # Player 2 attacks
+# Player 2 attacks
         if singleplayer:
             preset = AI_PRESETS[DIFFICULTY]
+            dist = abs(p1.x - p2.x) + abs(p1.y - p2.y)
 
-            # --- OG difficulty (original behavior) ---
-            if DIFFICULTY == "og" and p2_cd == 0:
-                dist = abs(player_x - player2_x) + abs(player_y - player2_y)
-
-                if dist < 60:
-                    p2_attack = "normal"
-                elif dist < 150:
-                    p2_attack = "dash"
-                else:
-                    p2_attack = "super"
-
-                p2_anim = ATTACKS[p2_attack]["frames"]
-                p2_cd = ATTACKS[p2_attack]["cooldown"]
-                p2_hit = False
-
-            # --- Balanced difficulties ---
+            if DIFFICULTY == "og":
+                if p2.cooldown == 0:
+                    if dist < 60:
+                        p2.start_attack("normal")
+                    elif dist < 150:
+                        p2.start_attack("dash")
+                    else:
+                        p2.start_attack("super")
             else:
                 ai_think_timer -= 1
 
-                if ai_think_timer <= 0 and p2_cd == 0:
+                if ai_think_timer <= 0 and p2.cooldown == 0:
                     ai_think_timer = preset["think_delay"]
-
-                    dist = abs(player_x - player2_x) + abs(player_y - player2_y)
                     roll = random.random()
 
-                    p2_attack = None
-
                     if dist < 140 and roll < preset["super_chance"]:
-                        p2_attack = "super"
+                        p2.start_attack("super")
                     elif dist < 60:
-                        p2_attack = "normal"
+                        p2.start_attack("normal")
                     elif dist < 180 and roll < preset["dash_chance"]:
-                        p2_attack = "dash"
-
-                    if p2_attack:
-                        p2_anim = ATTACKS[p2_attack]["frames"]
-                        p2_cd = ATTACKS[p2_attack]["cooldown"]
-                        p2_hit = False
+                        p2.start_attack("dash")
 
         else:
-            # Player 2 (human)
-            if p2_cd == 0:
-                if keys[pygame.K_PERIOD]:
-                    p2_attack = "super"
-                    p2_anim = ATTACKS["super"]["frames"]
-                    p2_cd = ATTACKS["super"]["cooldown"]
-                    p2_hit = False
-                elif keys[pygame.K_RSHIFT]:
-                    p2_attack = "dash"
-                    p2_anim = ATTACKS["dash"]["frames"]
-                    p2_cd = ATTACKS["dash"]["cooldown"]
-                    p2_hit = False
-                elif keys[pygame.K_SLASH]:
-                    p2_attack = "normal"
-                    p2_anim = ATTACKS["normal"]["frames"]
-                    p2_cd = ATTACKS["normal"]["cooldown"]
-                    p2_hit = False
+            if keys[pygame.K_PERIOD]:
+                p2.start_attack("super")
+            elif keys[pygame.K_RSHIFT]:
+                p2.start_attack("dash")
+            elif keys[pygame.K_SLASH]:
+                p2.start_attack("normal")
 
-        if p1_cd > 0:
-            p1_cd -= 1
-        if p1_anim > 0:
-            p1_anim -= 1
-            if p1_anim == 0:
-                p1_attack = None
+# Update attack timers
+        p1.update_attack_timers()
+        p2.update_attack_timers()
 
-        if p2_cd > 0:
-            p2_cd -= 1
-        if p2_anim > 0:
-            p2_anim -= 1
-            if p2_anim == 0:
-                p2_attack = None
-        # Player 1 dash movement
-        if p1_attack == "dash" and p1_anim > 0:
-            dx, dy = p1_dir
-            player_x += dx * ATTACKS["dash"]["speed"]
-            player_y += dy * ATTACKS["dash"]["speed"]
+        # Dash movement
+        p1.dash_move(WIDTH, HEIGHT)
+        p2.dash_move(WIDTH, HEIGHT)
 
-        # Player 2 dash movement
-        if p2_attack == "dash" and p2_anim > 0:
-            dx, dy = p2_dir
-            player2_x += dx * ATTACKS["dash"]["speed"]
-            player2_y += dy * ATTACKS["dash"]["speed"]
-
-        player_x = max(0, min(player_x, WIDTH - player_size))
-        player_y = max(0, min(player_y, HEIGHT - player_size))
-
-        player2_x = max(0, min(player2_x, WIDTH - player_size))
-        player2_y = max(0, min(player2_y, HEIGHT - player_size))
 
         # --- draw ---
         screen.fill((30, 30, 30))  # background
-        p1_rect = pygame.Rect(player_x, player_y, player_size, player_size)
-        p2_rect = pygame.Rect(player2_x, player2_y, player_size, player_size)
-        if p1_rect.colliderect(p2_rect):
-            overlap = p1_rect.clip(p2_rect)
+        p1_rect = p1.rect
+        p2_rect = p2.rect
+        if p1.rect.colliderect(p2.rect):
+            overlap = p1.rect.clip(p2.rect)
             PUSH = 1.2
+
             if overlap.width < overlap.height:
-                # push horizontally
-                if p1_rect.centerx < p2_rect.centerx:
-                    player_x -= overlap.width * 0.5 * PUSH
-                    player2_x += overlap.width * 0.5 * PUSH
+                if p1.rect.centerx < p2.rect.centerx:
+                    p1.x -= overlap.width * 0.5 * PUSH
+                    p2.x += overlap.width * 0.5 * PUSH
                 else:
-                    player_x += overlap.width * 0.5 * PUSH
-                    player2_x -= overlap.width * 0.5 * PUSH
+                    p1.x += overlap.width * 0.5 * PUSH
+                    p2.x -= overlap.width * 0.5 * PUSH
             else:
-                # push vertically
-                if p1_rect.centery < p2_rect.centery:
-                    player_y -= overlap.height * 0.5 * PUSH
-                    player2_y += overlap.height * 0.5 * PUSH
+                if p1.rect.centery < p2.rect.centery:
+                    p1.y -= overlap.height * 0.5 * PUSH
+                    p2.y += overlap.height * 0.5 * PUSH
                 else:
-                    player_y += overlap.height * 0.5 * PUSH
-                    player2_y -= overlap.height * 0.5 * PUSH
-        player_x = max(0, min(player_x, WIDTH - player_size))
-        player_y = max(0, min(player_y, HEIGHT - player_size))
-        player2_x = max(0, min(player2_x, WIDTH - player_size))
-        player2_y = max(0, min(player2_y, HEIGHT - player_size))
+                    p1.y += overlap.height * 0.5 * PUSH
+                    p2.y -= overlap.height * 0.5 * PUSH
 
-        pygame.draw.rect(screen, (200, 50, 50), p1_rect)
-        pygame.draw.rect(screen, (50, 50, 200), p2_rect)
-        draw_arrow(screen, p1_rect, p1_dir, (50, 50, 50))
-        draw_arrow(screen, p2_rect, p2_dir, (50, 50, 50))
+        pygame.draw.rect(screen, p1_body_color, p1_rect)
+        pygame.draw.rect(screen, p2_body_color, p2_rect)
+        draw_arrow(screen, p1.rect, p1.dir, (50, 50, 50))
+        draw_arrow(screen, p2.rect, p2.dir, (50, 50, 50))
+        hitbox1 = p1.get_hitbox()
+        hitbox2 = p2.get_hitbox()
 
-        hitbox1 = None
-        hitbox2 = None
+        if hitbox1:
+            pygame.draw.rect(screen, P1_ATTACK_COLORS[p1.attack], hitbox1)
+        if hitbox2:
+            pygame.draw.rect(screen, P2_ATTACK_COLORS[p2.attack], hitbox2)
 
-        if p1_attack:
-            atk = ATTACKS[p1_attack]
-            dx, dy = p1_dir
+        if hitbox1 and hitbox1.colliderect(p2.rect) and not p1.hit:
+            p2.hp -= ATTACKS[p1.attack]["dmg"]
+            p1.hit = True
 
-            if dx == 1:  # right
-                hitbox1 = pygame.Rect(
-                    player_x + player_size,
-                    player_y,
-                    atk["size"],
-                    player_size
-                )
+        if hitbox2 and hitbox2.colliderect(p1.rect) and not p2.hit:
+            p1.hp -= ATTACKS[p2.attack]["dmg"]
+            p2.hit = True
 
-            elif dx == -1:  # left
-                hitbox1 = pygame.Rect(
-                    player_x - atk["size"],
-                    player_y,
-                    atk["size"],
-                    player_size
-                )
-
-            elif dy == 1:  # down
-                hitbox1 = pygame.Rect(
-                    player_x,
-                    player_y + player_size,
-                    player_size,
-                    atk["size"]
-                )
-
-            elif dy == -1:  # up
-                hitbox1 = pygame.Rect(
-                    player_x,
-                    player_y - atk["size"],
-                    player_size,
-                    atk["size"]
-                )
-
-            pygame.draw.rect(screen, P1_COLORS[p1_attack], hitbox1)
-
-        if p2_attack:
-            atk = ATTACKS[p2_attack]
-            dx, dy = p2_dir
-
-            if dx == 1:  # right
-                hitbox2 = pygame.Rect(
-                    player2_x + player_size,
-                    player2_y,
-                    atk["size"],
-                    player_size
-                )
-
-            elif dx == -1:  # left
-                hitbox2 = pygame.Rect(
-                    player2_x - atk["size"],
-                    player2_y,
-                    atk["size"],
-                    player_size
-                )
-
-            elif dy == 1:  # down
-                hitbox2 = pygame.Rect(
-                    player2_x,
-                    player2_y + player_size,
-                    player_size,
-                    atk["size"]
-                )
-
-            elif dy == -1:  # up
-                hitbox2 = pygame.Rect(
-                    player2_x,
-                    player2_y - atk["size"],
-                    player_size,
-                    atk["size"]
-                )
-
-            pygame.draw.rect(screen, P2_COLORS[p2_attack], hitbox2)
-
-        if hitbox1 and hitbox1.colliderect(p2_rect) and not p1_hit:
-            p2hp -= ATTACKS[p1_attack]["dmg"]
-            p1_hit = True
-
-        if hitbox2 and hitbox2.colliderect(p1_rect) and not p2_hit:
-            p1hp -= ATTACKS[p2_attack]["dmg"]
-            p2_hit = True
-
-        p1hp = max(0, p1hp)
-        p2hp = max(0, p2hp)
+        p1hp = max(0, p1.hp)
+        p2hp = max(0, p2.hp)
         if win:
             overlay = pygame.Surface((WIDTH, HEIGHT))
             overlay.set_alpha(160)
