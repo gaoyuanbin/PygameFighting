@@ -117,7 +117,7 @@ class Player:
             )
 def draw_arrow(screen, rect, direction, color):
     dx, dy = direction
-    size = 12
+    size = 6
 
     cx, cy = rect.center
 
@@ -398,6 +398,11 @@ win = False
 running = True
 winner_text = ""
 player_size = 40
+
+import os
+_base = os.path.dirname(os.path.abspath(__file__))
+p1_img = pygame.transform.scale(pygame.image.load(os.path.join(_base, "pikachu.png")).convert_alpha(), (player_size, player_size))
+p2_img = pygame.transform.scale(pygame.image.load(os.path.join(_base, "magikarp.png")).convert_alpha(), (player_size, player_size))
 maxhp1 = 100
 maxhp2 = 100
 speed = 10
@@ -631,8 +636,8 @@ while running:
                     p1.y += overlap.height * 0.5 * PUSH
                     p2.y -= overlap.height * 0.5 * PUSH
 
-        pygame.draw.rect(screen, p1_body_color, p1_rect)
-        pygame.draw.rect(screen, p2_body_color, p2_rect)
+        screen.blit(p1_img, p1_rect)
+        screen.blit(p2_img, p2_rect)
         draw_arrow(screen, p1.rect, p1.dir, (255, 100, 100))
         draw_arrow(screen, p2.rect, p2.dir, (100, 100, 255))
         hitbox1 = p1.get_hitbox()
