@@ -1,5 +1,9 @@
 import random
 
+MAX_ENERGY = 100.0
+ENERGY_MOVE_COST = 0.5   # drained per frame a movement key is held
+ENERGY_REGEN_RATE = 0.2  # restored per frame (~12/sec at 60fps)
+
 class Player:
     def __init__(self, x, y, maxhp, attacks, size=40):
         self.x = x
@@ -8,6 +12,9 @@ class Player:
 
         self.maxhp = maxhp
         self.hp = maxhp
+
+        self.maxenergy = MAX_ENERGY
+        self.energy = MAX_ENERGY
 
         self.attacks = attacks
 
@@ -22,7 +29,10 @@ class Player:
     def rect(self):
         return pygame.Rect(self.x, self.y, self.size, self.size)
 
-    def move(self, dx, dy, speed, width, height):
+    def move(self, dx, dy, speed, width, height, no_cost=False):
+        if not no_cost and self.energy <= 0:
+            return
+
         self.x += dx * speed
         self.y += dy * speed
         self.dir = (dx, dy)
@@ -30,12 +40,17 @@ class Player:
         self.x = max(0, min(self.x, width - self.size))
         self.y = max(0, min(self.y, height - self.size))
 
+        if not no_cost:
+            self.energy = max(0, self.energy - ENERGY_MOVE_COST)
+
     def start_attack(self, name):
-        if self.cooldown == 0:
+        cost = self.attacks[name].get("energy", 0)
+        if self.cooldown == 0 and self.energy >= cost:
             self.attack = name
             self.anim = self.attacks[name]["frames"]
             self.cooldown = self.attacks[name]["cooldown"]
             self.hit = False
+            self.energy = max(0, self.energy - cost)
 
     def update_attack_timers(self):
         if self.cooldown > 0:
@@ -50,7 +65,10 @@ class Player:
         if self.attack == "dash" and self.anim > 0:
             dx, dy = self.dir
             speed = self.attacks["dash"]["speed"]
-            self.move(dx, dy, speed, width, height)
+            self.move(dx, dy, speed, width, height, no_cost=True)
+
+    def update_energy(self):
+        self.energy = min(self.maxenergy, self.energy + ENERGY_REGEN_RATE)
 
     def get_hitbox(self):
         if not self.attack:
@@ -59,15 +77,44 @@ class Player:
         atk = self.attacks[self.attack]
         dx, dy = self.dir
 
-        if dx == 1:
-            return pygame.Rect(self.x + self.size, self.y, atk["size"], self.size)
-        if dx == -1:
-            return pygame.Rect(self.x - atk["size"], self.y, atk["size"], self.size)
-        if dy == 1:
-            return pygame.Rect(self.x, self.y + self.size, self.size, atk["size"])
-        if dy == -1:
-            return pygame.Rect(self.x, self.y - atk["size"], self.size, atk["size"])
+        w = atk["width"]
+        h = atk["height"]
 
+        # RIGHT
+        if dx == 1:
+            return pygame.Rect(
+                self.x + self.size,
+                self.y + self.size // 2 - h // 2,
+                w,
+                h
+            )
+
+        # LEFT
+        if dx == -1:
+            return pygame.Rect(
+                self.x - w,
+                self.y + self.size // 2 - h // 2,
+                w,
+                h
+            )
+
+        # DOWN
+        if dy == 1:
+            return pygame.Rect(
+                self.x + self.size // 2 - h // 2,
+                self.y + self.size,
+                h,
+                w
+            )
+
+        # UP
+        if dy == -1:
+            return pygame.Rect(
+                self.x + self.size // 2 - h // 2,
+                self.y - w,
+                h,
+                w
+            )
 def draw_arrow(screen, rect, direction, color):
     dx, dy = direction
     size = 12
@@ -234,22 +281,28 @@ def character_select(screen, clock):
 ATTACKS = {
     "normal": {
         "dmg": 10,
-        "size": 50,
+        "width": 50,
+        "height": 50,
         "frames": 10,
         "cooldown": 30,
+        "energy": 10,
     },
     "super": {
         "dmg": 25,
-        "size": 1000,
+        "width": 500,
+        "height": 80,
         "frames": 20,
         "cooldown": 60,
+        "energy": 25,
     },
     "dash": {
         "dmg": 15,
-        "size": 50,
+        "width": 50,
+        "height": 50,
         "frames": 20,
         "cooldown": 30,
         "speed": 45,
+        "energy": 15,
     },
 }
 
@@ -277,40 +330,53 @@ CHARACTERS = [
         "maxhp": 140,
         "speed": 7,
         "attacks": {
-            "normal": {"dmg": 14, "size": 45, "frames": 10, "cooldown": 30},
-            "super":  {"dmg": 30, "size": 140, "frames": 20, "cooldown": 70},
-            "dash":   {"dmg": 10, "size": 40, "frames": 16, "cooldown": 35, "speed": 40},
+            "normal": {"dmg": 20, "width": 50, "height": 50, "frames": 10, "cooldown": 30, "energy": 10},
+            "super":  {"dmg": 40, "width": 140, "height": 80, "frames": 20, "cooldown": 90, "energy": 25},
+            "dash":   {"dmg": 15, "width": 40, "height": 40, "frames": 16, "cooldown": 35, "speed": 30, "energy": 15},
         },
-        "colors": {"normal": (200, 200, 200), "super": (160, 160, 160), "dash": (220, 220, 220)},
+        "colors": {
+            "normal": (200, 200, 200),
+            "super": (160, 160, 160),
+            "dash": (220, 220, 220)
+        },
         "body": (120, 120, 120),
     },
+
     {
         "id": "paper",
         "name": "PAPER",
         "maxhp": 100,
         "speed": 10,
         "attacks": {
-            "normal": {"dmg": 9, "size": 90, "frames": 10, "cooldown": 26},
-            "super":  {"dmg": 22, "size": 300, "frames": 18, "cooldown": 60},
-            "dash":   {"dmg": 12, "size": 60, "frames": 18, "cooldown": 28, "speed": 45},
+            "normal": {"dmg": 10, "width": 90, "height": 45, "frames": 10, "cooldown": 25, "energy": 10},
+            "super":  {"dmg": 22, "width": 300, "height": 100, "frames": 18, "cooldown": 65, "energy": 25},
+            "dash":   {"dmg": 12, "width": 70, "height": 50, "frames": 18, "cooldown": 28, "speed": 40, "energy": 15},
         },
-        "colors": {"normal": (255, 235, 180), "super": (255, 210, 120), "dash": (255, 240, 210)},
+        "colors": {
+            "normal": (255, 235, 180),
+            "super": (255, 210, 120),
+            "dash": (255, 240, 210)
+        },
         "body": (220, 200, 150),
     },
+
     {
         "id": "scissors",
         "name": "SCISSORS",
         "maxhp": 80,
         "speed": 13,
         "attacks": {
-            "normal": {"dmg": 8, "size": 55, "frames": 8, "cooldown": 18},
-            "super":  {"dmg": 18, "size": 120, "frames": 16, "cooldown": 50},
-            "dash":   {"dmg": 14, "size": 50, "frames": 18, "cooldown": 20, "speed": 55},
+            "normal": {"dmg": 10, "width": 20, "height": 65, "frames": 8, "cooldown": 18, "energy": 10},
+            "super":  {"dmg": 35, "width": 500, "height": 50, "frames": 16, "cooldown": 45, "energy": 25},
+            "dash":   {"dmg": 10, "width": 40, "height": 40, "frames": 18, "cooldown": 20, "speed": 60, "energy": 15},
         },
-        "colors": {"normal": (255, 140, 140), "super": (255, 90, 90), "dash": (255, 180, 180)},
+        "colors": {
+            "normal": (255, 140, 140),
+            "super": (255, 90, 90),
+            "dash": (255, 180, 180)
+        },
         "body": (200, 70, 70),
     },
-
 ]
 import pygame
 import sys
@@ -332,7 +398,8 @@ win = False
 running = True
 winner_text = ""
 player_size = 40
-maxhp = 100
+maxhp1 = 100
+maxhp2 = 100
 speed = 10
 
 
@@ -389,8 +456,8 @@ while running:
         DIFFICULTY = selected_difficulty
 
         # singleplayer uses your defaults
-        p1 = Player(10, 10, maxhp, ATTACKS)
-        p2 = Player(800, 400, maxhp, ATTACKS)
+        p1 = Player(10, 10, maxhp1, ATTACKS)
+        p2 = Player(800, 400, maxhp2, ATTACKS)
 
         p1_speed = speed
         p2_speed = speed
@@ -409,14 +476,14 @@ while running:
         p1 = Player(10, 10, c1["maxhp"], c1["attacks"])
         p2 = Player(800, 400, c2["maxhp"], c2["attacks"])
 
+        maxhp1 = c1["maxhp"]
+        maxhp2 = c2["maxhp"]
         p1_speed = c1["speed"]
         p2_speed = c2["speed"]
         P1_ATTACK_COLORS = c1["colors"]
         P2_ATTACK_COLORS = c2["colors"]
         p1_body_color = c1["body"]
         p2_body_color = c2["body"]
-    p1 = Player(10, 10, maxhp, ATTACKS)
-    p2 = Player(800, 400, maxhp, ATTACKS)
 
 
 
@@ -530,9 +597,11 @@ while running:
             elif keys[pygame.K_SLASH]:
                 p2.start_attack("normal")
 
-# Update attack timers
+# Update attack timers and energy
         p1.update_attack_timers()
         p2.update_attack_timers()
+        p1.update_energy()
+        p2.update_energy()
 
         # Dash movement
         p1.dash_move(WIDTH, HEIGHT)
@@ -564,8 +633,8 @@ while running:
 
         pygame.draw.rect(screen, p1_body_color, p1_rect)
         pygame.draw.rect(screen, p2_body_color, p2_rect)
-        draw_arrow(screen, p1.rect, p1.dir, (50, 50, 50))
-        draw_arrow(screen, p2.rect, p2.dir, (50, 50, 50))
+        draw_arrow(screen, p1.rect, p1.dir, (255, 100, 100))
+        draw_arrow(screen, p2.rect, p2.dir, (100, 100, 255))
         hitbox1 = p1.get_hitbox()
         hitbox2 = p2.get_hitbox()
 
@@ -586,7 +655,6 @@ while running:
         p2hp = max(0, p2.hp)
         if win:
             overlay = pygame.Surface((WIDTH, HEIGHT))
-            overlay.set_alpha(160)
             overlay.fill((0, 0, 0))
             screen.blit(overlay, (0, 0))
 
@@ -596,21 +664,38 @@ while running:
 
         BAR_WIDTH = 300
         BAR_HEIGHT = 20
+        ENERGY_BAR_HEIGHT = 12
 
         # Player 1 HP bar
         pygame.draw.rect(screen, (100, 100, 100), (50, 30, BAR_WIDTH, BAR_HEIGHT))
         pygame.draw.rect(
             screen,
             (50, 255, 50),
-            (50, 30, BAR_WIDTH * (p1hp / maxhp), BAR_HEIGHT)
+            (50, 30, BAR_WIDTH * (p1hp / maxhp1), BAR_HEIGHT)
+        )
+
+        # Player 1 energy bar
+        pygame.draw.rect(screen, (60, 60, 60), (50, 57, BAR_WIDTH, ENERGY_BAR_HEIGHT))
+        pygame.draw.rect(
+            screen,
+            (255, 200, 0),
+            (50, 57, BAR_WIDTH * (p1.energy / p1.maxenergy), ENERGY_BAR_HEIGHT)
         )
 
         # Player 2 HP bar
-        pygame.draw.rect(screen, (100, 100,  100), (WIDTH - 350, 30, BAR_WIDTH, BAR_HEIGHT))
+        pygame.draw.rect(screen, (100, 100, 100), (WIDTH - 350, 30, BAR_WIDTH, BAR_HEIGHT))
         pygame.draw.rect(
             screen,
             (50, 255, 50),
-            (WIDTH - 350, 30, BAR_WIDTH * (p2hp / maxhp), BAR_HEIGHT)
+            (WIDTH - 350, 30, BAR_WIDTH * (p2hp / maxhp2), BAR_HEIGHT)
+        )
+
+        # Player 2 energy bar
+        pygame.draw.rect(screen, (60, 60, 60), (WIDTH - 350, 57, BAR_WIDTH, ENERGY_BAR_HEIGHT))
+        pygame.draw.rect(
+            screen,
+            (255, 200, 0),
+            (WIDTH - 350, 57, BAR_WIDTH * (p2.energy / p2.maxenergy), ENERGY_BAR_HEIGHT)
         )
         if not win:
             if p1hp <= 0:
