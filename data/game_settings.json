@@ -1,0 +1,21 @@
+{
+  "viewport": {
+    "width": 1000,
+    "height": 600
+  },
+  "player_size": 80,
+  "default_maxhp": 100,
+  "default_speed": 10,
+  "default_difficulty": "easy",
+  "energy": {
+    "move_cost": 0.5,
+    "regen_rate": 0.4
+  },
+  "ui": {
+    "bar_width": 300,
+    "bar_height": 20,
+    "energy_bar_height": 12,
+    "hud_height": 80
+  },
+  "music_volume": 0.4
+}

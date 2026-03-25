@@ -1,11 +1,51 @@
 import random
+import math
+import os
+import json
 
-MAX_ENERGY = 100.0
-ENERGY_MOVE_COST = 0.5   # drained per frame a movement key is held
-ENERGY_REGEN_RATE = 0.2  # restored per frame (~12/sec at 60fps)
+_base = os.path.dirname(os.path.abspath(__file__))
+
+with open(os.path.join(_base, "data", "game_settings.json")) as f:
+    _cfg = json.load(f)
+
+WIDTH             = _cfg["viewport"]["width"]
+HEIGHT            = _cfg["viewport"]["height"]
+player_size       = _cfg["player_size"]
+maxhp1            = _cfg["default_maxhp"]
+maxhp2            = _cfg["default_maxhp"]
+speed             = _cfg["default_speed"]
+DIFFICULTY        = _cfg["default_difficulty"]
+ENERGY_MOVE_COST  = _cfg["energy"]["move_cost"]
+ENERGY_REGEN_RATE = _cfg["energy"]["regen_rate"]
+BAR_WIDTH         = _cfg["ui"]["bar_width"]
+BAR_HEIGHT        = _cfg["ui"]["bar_height"]
+ENERGY_BAR_HEIGHT = _cfg["ui"]["energy_bar_height"]
+HUD_HEIGHT        = _cfg["ui"]["hud_height"]
+MUSIC_VOLUME      = _cfg["music_volume"]
+
+def _load_player(filename):
+    with open(os.path.join(_base, "data", filename)) as f:
+        data = json.load(f)
+    data["colors"] = {k: tuple(v) for k, v in data["colors"].items()}
+    data["body"] = tuple(data["body"])
+    return data
+
+with open(os.path.join(_base, "data", "player_default.json")) as f:
+    _default = json.load(f)
+ATTACKS   = _default["attacks"]
+P1_COLORS = {k: tuple(v) for k, v in _default["p1_colors"].items()}
+P2_COLORS = {k: tuple(v) for k, v in _default["p2_colors"].items()}
+P1_BODY   = tuple(_default["p1_body"])
+P2_BODY   = tuple(_default["p2_body"])
+
+CHARACTERS = [
+    _load_player("player_rock.json"),
+    _load_player("player_paper.json"),
+    _load_player("player_scissors.json"),
+]
 
 class Player:
-    def __init__(self, x, y, maxhp, attacks, size=40):
+    def __init__(self, x, y, maxhp, attacks, MAX_ENERGY, size=40,):
         self.x = x
         self.y = y
         self.size = size
@@ -38,7 +78,7 @@ class Player:
         self.dir = (dx, dy)
 
         self.x = max(0, min(self.x, width - self.size))
-        self.y = max(0, min(self.y, height - self.size))
+        self.y = max(HUD_HEIGHT, min(self.y, height - self.size))
 
         if not no_cost:
             self.energy = max(0, self.energy - ENERGY_MOVE_COST)
@@ -77,44 +117,27 @@ class Player:
         atk = self.attacks[self.attack]
         dx, dy = self.dir
 
-        w = atk["width"]
-        h = atk["height"]
+        radius = atk["radius"]
+        half_w = int(radius * math.sin(math.radians(atk["degree"] / 2)))
+
+        cx = self.x + self.size // 2
+        cy = self.y + self.size // 2
 
         # RIGHT
         if dx == 1:
-            return pygame.Rect(
-                self.x + self.size,
-                self.y + self.size // 2 - h // 2,
-                w,
-                h
-            )
+            return pygame.Rect(cx, cy - half_w, radius, half_w * 2)
 
         # LEFT
         if dx == -1:
-            return pygame.Rect(
-                self.x - w,
-                self.y + self.size // 2 - h // 2,
-                w,
-                h
-            )
+            return pygame.Rect(cx - radius, cy - half_w, radius, half_w * 2)
 
         # DOWN
         if dy == 1:
-            return pygame.Rect(
-                self.x + self.size // 2 - h // 2,
-                self.y + self.size,
-                h,
-                w
-            )
+            return pygame.Rect(cx - half_w, cy, half_w * 2, radius)
 
         # UP
         if dy == -1:
-            return pygame.Rect(
-                self.x + self.size // 2 - h // 2,
-                self.y - w,
-                h,
-                w
-            )
+            return pygame.Rect(cx - half_w, cy - radius, half_w * 2, radius)
 def draw_arrow(screen, rect, direction, color):
     dx, dy = direction
     size = 6
@@ -137,6 +160,15 @@ def draw_arrow(screen, rect, direction, color):
         right = (ox + size, oy)
 
     pygame.draw.polygon(screen, color, [tip, left, right])
+
+
+def draw_sector(screen, color, cx, cy, radius, center_angle_deg, spread_deg, steps=20):
+    half = spread_deg / 2
+    points = [(cx, cy)]
+    for i in range(steps + 1):
+        angle = math.radians(center_angle_deg - half + i * spread_deg / steps)
+        points.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+    pygame.draw.polygon(screen, color, points)
 
 
 def main_menu(screen, clock):
@@ -278,113 +310,12 @@ def character_select(screen, clock):
 
         pygame.display.flip()
 
-ATTACKS = {
-    "normal": {
-        "dmg": 10,
-        "width": 50,
-        "height": 50,
-        "frames": 10,
-        "cooldown": 30,
-        "energy": 10,
-    },
-    "super": {
-        "dmg": 25,
-        "width": 500,
-        "height": 80,
-        "frames": 20,
-        "cooldown": 60,
-        "energy": 25,
-    },
-    "dash": {
-        "dmg": 15,
-        "width": 50,
-        "height": 50,
-        "frames": 20,
-        "cooldown": 30,
-        "speed": 45,
-        "energy": 15,
-    },
-}
-
-P1_COLORS = {
-    "normal": (255, 200, 50),
-    "super": (255, 100, 0),
-    "dash": (255, 200, 200)
-}
-
-P2_COLORS = {
-    "normal": (50, 200, 255),
-    "super": (0, 150, 255),
-    "dash": (200, 200, 255)
-}
-
-# --- Characters (multiplayer only) ---
-# Each character can override maxhp, speed, attacks, and colors.
-# --- Characters (multiplayer only) ---
-# Each character can override maxhp, speed, attacks, and colors.
-
-CHARACTERS = [
-    {
-        "id": "rock",
-        "name": "ROCK",
-        "maxhp": 140,
-        "speed": 7,
-        "attacks": {
-            "normal": {"dmg": 20, "width": 50, "height": 50, "frames": 10, "cooldown": 30, "energy": 10},
-            "super":  {"dmg": 40, "width": 140, "height": 80, "frames": 20, "cooldown": 90, "energy": 25},
-            "dash":   {"dmg": 15, "width": 40, "height": 40, "frames": 16, "cooldown": 35, "speed": 30, "energy": 15},
-        },
-        "colors": {
-            "normal": (200, 200, 200),
-            "super": (160, 160, 160),
-            "dash": (220, 220, 220)
-        },
-        "body": (120, 120, 120),
-    },
-
-    {
-        "id": "paper",
-        "name": "PAPER",
-        "maxhp": 100,
-        "speed": 10,
-        "attacks": {
-            "normal": {"dmg": 10, "width": 90, "height": 45, "frames": 10, "cooldown": 25, "energy": 10},
-            "super":  {"dmg": 22, "width": 300, "height": 100, "frames": 18, "cooldown": 65, "energy": 25},
-            "dash":   {"dmg": 12, "width": 70, "height": 50, "frames": 18, "cooldown": 28, "speed": 40, "energy": 15},
-        },
-        "colors": {
-            "normal": (255, 235, 180),
-            "super": (255, 210, 120),
-            "dash": (255, 240, 210)
-        },
-        "body": (220, 200, 150),
-    },
-
-    {
-        "id": "scissors",
-        "name": "SCISSORS",
-        "maxhp": 80,
-        "speed": 13,
-        "attacks": {
-            "normal": {"dmg": 10, "width": 20, "height": 65, "frames": 8, "cooldown": 18, "energy": 10},
-            "super":  {"dmg": 35, "width": 500, "height": 50, "frames": 16, "cooldown": 45, "energy": 25},
-            "dash":   {"dmg": 10, "width": 40, "height": 40, "frames": 18, "cooldown": 20, "speed": 60, "energy": 15},
-        },
-        "colors": {
-            "normal": (255, 140, 140),
-            "super": (255, 90, 90),
-            "dash": (255, 180, 180)
-        },
-        "body": (200, 70, 70),
-    },
-]
 import pygame
 import sys
 
 # --- setup ---
 pygame.init()
 
-WIDTH, HEIGHT = (1000, 600)
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Pygame fighting")
 
@@ -397,20 +328,10 @@ countdown = 120
 win = False
 running = True
 winner_text = ""
-player_size = 40
-
-import os
-_base = os.path.dirname(os.path.abspath(__file__))
-p1_img = pygame.transform.scale(pygame.image.load(os.path.join(_base, "pikachu.png")).convert_alpha(), (player_size, player_size))
-p2_img = pygame.transform.scale(pygame.image.load(os.path.join(_base, "magikarp.png")).convert_alpha(), (player_size, player_size))
-maxhp1 = 100
-maxhp2 = 100
-speed = 10
-
-
-
-DIFFICULTY = "easy"
-# "easy", "hard", "unbeatable", "og"
+p1_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "character1.png")).convert_alpha(), (player_size, player_size))
+p2_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "character2.png")).convert_alpha(), (player_size, player_size))
+bg_img = pygame.transform.scale(pygame.image.load(os.path.join(_base, "bg.png")).convert(), (WIDTH, HEIGHT))
+pygame.mixer.music.load(os.path.join(_base,"assets", "bgm.mp3"))
 
 AI_PRESETS = {
     "baby":{
@@ -446,7 +367,7 @@ AI_PRESETS = {
 }
 
 ai_think_timer = 0
-
+energy = True
 
 while running:
 
@@ -461,15 +382,15 @@ while running:
         DIFFICULTY = selected_difficulty
 
         # singleplayer uses your defaults
-        p1 = Player(10, 10, maxhp1, ATTACKS)
-        p2 = Player(800, 400, maxhp2, ATTACKS)
+        p1 = Player(10, 10, maxhp1, ATTACKS,10000000, size=player_size)
+        p2 = Player(800, 400, maxhp2, ATTACKS,10000000, size=player_size)
 
         p1_speed = speed
         p2_speed = speed
         P1_ATTACK_COLORS = P1_COLORS
         P2_ATTACK_COLORS = P2_COLORS
-        p1_body_color = (200, 50, 50)
-        p2_body_color = (50, 50, 200)
+        p1_body_color = P1_BODY
+        p2_body_color = P2_BODY
 
     else:
         singleplayer = False
@@ -478,8 +399,8 @@ while running:
         if c1 is None:  # cancelled
             continue
 
-        p1 = Player(10, 10, c1["maxhp"], c1["attacks"])
-        p2 = Player(800, 400, c2["maxhp"], c2["attacks"])
+        p1 = Player(10, 10, c1["maxhp"], c1["attacks"], 100, size=player_size)
+        p2 = Player(800, 400, c2["maxhp"], c2["attacks"], 100, size=player_size)
 
         maxhp1 = c1["maxhp"]
         maxhp2 = c2["maxhp"]
@@ -494,6 +415,8 @@ while running:
 
     win = False
     winner_text = ""
+    pygame.mixer.music.set_volume(MUSIC_VOLUME)
+    pygame.mixer.music.play(-1)
 
     match_running = True
 
@@ -513,108 +436,106 @@ while running:
                 if event.key == pygame.K_RETURN:
                     match_running = False
 
-        keys = pygame.key.get_pressed()
+        if not win:
+            keys = pygame.key.get_pressed()
 
+            # --- input ---
+            # Player 1
+            if keys[pygame.K_a]:
+                p1.move(-1, 0, p1_speed, WIDTH, HEIGHT)
+            if keys[pygame.K_d]:
+                p1.move(1, 0, p1_speed, WIDTH, HEIGHT)
+            if keys[pygame.K_w]:
+                p1.move(0, -1, p1_speed, WIDTH, HEIGHT)
+            if keys[pygame.K_s]:
+                p1.move(0, 1, p1_speed, WIDTH, HEIGHT)
 
-        # --- input ---
-        # Player 1
-        if keys[pygame.K_a]:
-            p1.move(-1, 0, p1_speed, WIDTH, HEIGHT)
-        if keys[pygame.K_d]:
-            p1.move(1, 0, p1_speed, WIDTH, HEIGHT)
-        if keys[pygame.K_w]:
-            p1.move(0, -1, p1_speed, WIDTH, HEIGHT)
-        if keys[pygame.K_s]:
-            p1.move(0, 1, p1_speed, WIDTH, HEIGHT)
+            # Player 2
+            if singleplayer:
+                preset = AI_PRESETS[DIFFICULTY]
 
-        # Player 2
-        if singleplayer:
-            preset = AI_PRESETS[DIFFICULTY]
+                dx = p1.x - p2.x
+                dy = p1.y - p2.y
 
-            dx = p1.x - p2.x
-            dy = p1.y - p2.y
+                if abs(dx) > abs(dy):
+                    direction = 1 if dx > 0 else -1
+                    p2.move(direction, 0, speed, WIDTH, HEIGHT)
+                else:
+                    direction = 1 if dy > 0 else -1
+                    p2.move(0, direction, speed, WIDTH, HEIGHT)
 
-            if abs(dx) > abs(dy):
-                direction = 1 if dx > 0 else -1
-                p2.move(direction, 0, speed, WIDTH, HEIGHT)
+                # retreat (not OG)
+                if DIFFICULTY != "og":
+                    if abs(dx) + abs(dy) < 80 and random.random() < preset["retreat_chance"]:
+                        p2.move(-p2.dir[0], -p2.dir[1], speed, WIDTH, HEIGHT)
             else:
-                direction = 1 if dy > 0 else -1
-                p2.move(0, direction, speed, WIDTH, HEIGHT)
+                # Player 2 (human)
+                if keys[pygame.K_LEFT]:
+                    p2.move(-1, 0, p2_speed, WIDTH, HEIGHT)
+                if keys[pygame.K_RIGHT]:
+                    p2.move(1, 0, p2_speed, WIDTH, HEIGHT)
+                if keys[pygame.K_UP]:
+                    p2.move(0, -1, p2_speed, WIDTH, HEIGHT)
+                if keys[pygame.K_DOWN]:
+                    p2.move(0, 1, p2_speed, WIDTH, HEIGHT)
 
-            # retreat (not OG)
-            if DIFFICULTY != "og":
-                if abs(dx) + abs(dy) < 80 and random.random() < preset["retreat_chance"]:
-                    p2.move(-p2.dir[0], -p2.dir[1], speed, WIDTH, HEIGHT)
-        else:
-            # Player 2 (human)
-            if keys[pygame.K_LEFT]:
-                p2.move(-1, 0, p2_speed, WIDTH, HEIGHT)
-            if keys[pygame.K_RIGHT]:
-                p2.move(1, 0, p2_speed, WIDTH, HEIGHT)
+            # Player 1 attacks
+            if keys[pygame.K_r]:
+                p1.start_attack("super")
+            elif keys[pygame.K_q]:
+                p1.start_attack("dash")
+            elif keys[pygame.K_e]:
+                p1.start_attack("normal")
 
-            if keys[pygame.K_UP]:
-                p2.move(0, -1, p2_speed, WIDTH, HEIGHT)
+            # Player 2 attacks
+            if singleplayer:
+                preset = AI_PRESETS[DIFFICULTY]
+                dist = abs(p1.x - p2.x) + abs(p1.y - p2.y)
 
-            if keys[pygame.K_DOWN]:
-                p2.move(0, 1, p2_speed, WIDTH, HEIGHT)
+                if DIFFICULTY == "og":
+                    if p2.cooldown == 0:
+                        if dist < 60:
+                            p2.start_attack("normal")
+                        elif dist < 150:
+                            p2.start_attack("dash")
+                        else:
+                            p2.start_attack("super")
+                else:
+                    ai_think_timer -= 1
 
+                    if ai_think_timer <= 0 and p2.cooldown == 0:
+                        ai_think_timer = preset["think_delay"]
+                        roll = random.random()
 
-        # Player 1 attacks
-        if keys[pygame.K_r]:
-            p1.start_attack("super")
-        elif keys[pygame.K_q]:
-            p1.start_attack("dash")
-        elif keys[pygame.K_e]:
-            p1.start_attack("normal")
-        # Player 2 attacks
-# Player 2 attacks
-        if singleplayer:
-            preset = AI_PRESETS[DIFFICULTY]
-            dist = abs(p1.x - p2.x) + abs(p1.y - p2.y)
+                        if dist < 140 and roll < preset["super_chance"]:
+                            p2.start_attack("super")
+                        elif dist < 60:
+                            p2.start_attack("normal")
+                        elif dist < 180 and roll < preset["dash_chance"]:
+                            p2.start_attack("dash")
 
-            if DIFFICULTY == "og":
-                if p2.cooldown == 0:
-                    if dist < 60:
-                        p2.start_attack("normal")
-                    elif dist < 150:
-                        p2.start_attack("dash")
-                    else:
-                        p2.start_attack("super")
             else:
-                ai_think_timer -= 1
+                if keys[pygame.K_PERIOD]:
+                    p2.start_attack("super")
+                elif keys[pygame.K_RSHIFT]:
+                    p2.start_attack("dash")
+                elif keys[pygame.K_SLASH]:
+                    p2.start_attack("normal")
 
-                if ai_think_timer <= 0 and p2.cooldown == 0:
-                    ai_think_timer = preset["think_delay"]
-                    roll = random.random()
+            # Update attack timers and energy
+            p1.update_attack_timers()
+            p2.update_attack_timers()
+            if energy:
+                p1.update_energy()
+                p2.update_energy()
 
-                    if dist < 140 and roll < preset["super_chance"]:
-                        p2.start_attack("super")
-                    elif dist < 60:
-                        p2.start_attack("normal")
-                    elif dist < 180 and roll < preset["dash_chance"]:
-                        p2.start_attack("dash")
-
-        else:
-            if keys[pygame.K_PERIOD]:
-                p2.start_attack("super")
-            elif keys[pygame.K_RSHIFT]:
-                p2.start_attack("dash")
-            elif keys[pygame.K_SLASH]:
-                p2.start_attack("normal")
-
-# Update attack timers and energy
-        p1.update_attack_timers()
-        p2.update_attack_timers()
-        p1.update_energy()
-        p2.update_energy()
-
-        # Dash movement
-        p1.dash_move(WIDTH, HEIGHT)
-        p2.dash_move(WIDTH, HEIGHT)
+            # Dash movement
+            p1.dash_move(WIDTH, HEIGHT)
+            p2.dash_move(WIDTH, HEIGHT)
 
 
         # --- draw ---
-        screen.fill((30, 30, 30))  # background
+        screen.blit(bg_img, (0, 0))
         p1_rect = p1.rect
         p2_rect = p2.rect
         if p1.rect.colliderect(p2.rect):
@@ -636,6 +557,11 @@ while running:
                     p1.y += overlap.height * 0.5 * PUSH
                     p2.y -= overlap.height * 0.5 * PUSH
 
+            p1.x = max(0, min(p1.x, WIDTH - p1.size))
+            p1.y = max(HUD_HEIGHT, min(p1.y, HEIGHT - p1.size))
+            p2.x = max(0, min(p2.x, WIDTH - p2.size))
+            p2.y = max(HUD_HEIGHT, min(p2.y, HEIGHT - p2.size))
+
         screen.blit(p1_img, p1_rect)
         screen.blit(p2_img, p2_rect)
         draw_arrow(screen, p1.rect, p1.dir, (255, 100, 100))
@@ -644,9 +570,17 @@ while running:
         hitbox2 = p2.get_hitbox()
 
         if hitbox1:
-            pygame.draw.rect(screen, P1_ATTACK_COLORS[p1.attack], hitbox1)
+            atk1 = p1.attacks[p1.attack]
+            angle1 = math.degrees(math.atan2(p1.dir[1], p1.dir[0]))
+            draw_sector(screen, P1_ATTACK_COLORS[p1.attack],
+                        p1.x + p1.size // 2, p1.y + p1.size // 2,
+                        atk1["radius"], angle1, atk1["degree"])
         if hitbox2:
-            pygame.draw.rect(screen, P2_ATTACK_COLORS[p2.attack], hitbox2)
+            atk2 = p2.attacks[p2.attack]
+            angle2 = math.degrees(math.atan2(p2.dir[1], p2.dir[0]))
+            draw_sector(screen, P2_ATTACK_COLORS[p2.attack],
+                        p2.x + p2.size // 2, p2.y + p2.size // 2,
+                        atk2["radius"], angle2, atk2["degree"])
 
         if hitbox1 and hitbox1.colliderect(p2.rect) and not p1.hit:
             p2.hp -= ATTACKS[p1.attack]["dmg"]
@@ -660,16 +594,17 @@ while running:
         p2hp = max(0, p2.hp)
         if win:
             overlay = pygame.Surface((WIDTH, HEIGHT))
-            overlay.fill((0, 0, 0))
+            overlay.fill((10,10,10))
             screen.blit(overlay, (0, 0))
 
             text_surface = font.render(winner_text, True, (255, 255, 255))
             text_rect = text_surface.get_rect(center=(WIDTH // 2, HEIGHT // 2))
             screen.blit(text_surface, text_rect)
 
-        BAR_WIDTH = 300
-        BAR_HEIGHT = 20
-        ENERGY_BAR_HEIGHT = 12
+        # HUD panel
+        hud_surf = pygame.Surface((WIDTH, HUD_HEIGHT), pygame.SRCALPHA)
+        hud_surf.fill((0, 0, 0, 180))
+        screen.blit(hud_surf, (0, 0))
 
         # Player 1 HP bar
         pygame.draw.rect(screen, (100, 100, 100), (50, 30, BAR_WIDTH, BAR_HEIGHT))
@@ -706,9 +641,11 @@ while running:
             if p1hp <= 0:
                 win = True
                 winner_text = "PLAYER 2 WINS - press enter"
+                pygame.mixer.music.fadeout(2000)
             elif p2hp <= 0:
                 win = True
                 winner_text = "PLAYER 1 WINS - press enter"
+                pygame.mixer.music.fadeout(2000)
 
         pygame.display.flip()
 

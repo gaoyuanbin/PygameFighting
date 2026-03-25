@@ -1,0 +1,17 @@
+{
+  "id": "scissors",
+  "name": "SCISSORS",
+  "maxhp": 80,
+  "speed": 13,
+  "attacks": {
+    "normal": {"dmg": 10, "radius": 75,  "degree": 60,  "frames": 8,  "cooldown": 18, "energy": 5},
+    "super":  {"dmg": 35, "radius": 300, "degree": 45,  "frames": 16, "cooldown": 45, "energy": 25},
+    "dash":   {"dmg": 10, "radius": 65,  "degree": 70,  "frames": 18, "cooldown": 20, "speed": 60, "energy": 15}
+  },
+  "colors": {
+    "normal": [255, 140, 140],
+    "super":  [255, 90,  90],
+    "dash":   [255, 180, 180]
+  },
+  "body": [200, 70, 70]
+}

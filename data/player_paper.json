@@ -1,0 +1,17 @@
+{
+  "id": "paper",
+  "name": "PAPER",
+  "maxhp": 100,
+  "speed": 10,
+  "attacks": {
+    "normal": {"dmg": 10, "radius": 90,  "degree": 100, "frames": 10, "cooldown": 25, "energy": 10},
+    "super":  {"dmg": 22, "radius": 280, "degree": 90,  "frames": 18, "cooldown": 65, "energy": 25},
+    "dash":   {"dmg": 12, "radius": 80,  "degree": 80,  "frames": 18, "cooldown": 28, "speed": 40, "energy": 15}
+  },
+  "colors": {
+    "normal": [255, 235, 180],
+    "super":  [255, 210, 120],
+    "dash":   [255, 240, 210]
+  },
+  "body": [220, 200, 150]
+}
