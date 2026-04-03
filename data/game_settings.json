@@ -18,6 +18,5 @@
     "hud_height": 80
   },
   "music_volume": 0.4,
-  "relay_host": "192.168.1.11",
   "relay_port": 5555
 }

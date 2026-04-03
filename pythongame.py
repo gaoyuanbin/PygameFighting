@@ -955,11 +955,6 @@ while running:
                         winner_text = (f"PLAYER {_alive[0] + 1} WINS - press enter"
                                        if _alive else "DRAW - press enter")
                         pygame.mixer.music.fadeout(2000)
-                if win:
-                    net.send({"type": "state", "pid": my_pid,
-                              "x": me.x, "y": me.y, "dir": list(me.dir),
-                              "attack": me.attack, "anim": me.anim,
-                              "cooldown": me.cooldown, "hp": me.hp, "energy": me.energy})
 
         else:
             # ---- Local draw ----
