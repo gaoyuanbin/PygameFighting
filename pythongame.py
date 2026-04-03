@@ -28,6 +28,14 @@ ENERGY_BAR_HEIGHT = _cfg["ui"]["energy_bar_height"]
 HUD_HEIGHT        = _cfg["ui"]["hud_height"]
 MUSIC_VOLUME      = _cfg["music_volume"]
 def _get_local_ip():
+    import subprocess as _sp
+    for iface in ("en0", "en1"):
+        try:
+            ip = _sp.check_output(["ipconfig", "getifaddr", iface], text=True).strip()
+            if ip:
+                return ip
+        except Exception:
+            pass
     import socket as _socket
     try:
         s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
