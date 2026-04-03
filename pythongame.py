@@ -27,7 +27,18 @@ BAR_HEIGHT        = _cfg["ui"]["bar_height"]
 ENERGY_BAR_HEIGHT = _cfg["ui"]["energy_bar_height"]
 HUD_HEIGHT        = _cfg["ui"]["hud_height"]
 MUSIC_VOLUME      = _cfg["music_volume"]
-RELAY_HOST        = _cfg.get("relay_host", "127.0.0.1")
+def _get_local_ip():
+    import socket as _socket
+    try:
+        s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+RELAY_HOST        = _cfg.get("relay_host") or _get_local_ip()
 RELAY_PORT        = _cfg.get("relay_port", 5555)
 
 def _load_player(filename):
