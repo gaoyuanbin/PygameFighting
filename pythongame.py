@@ -26,7 +26,7 @@ BAR_WIDTH         = _cfg["ui"]["bar_width"]
 BAR_HEIGHT        = _cfg["ui"]["bar_height"]
 ENERGY_BAR_HEIGHT = _cfg["ui"]["energy_bar_height"]
 HUD_HEIGHT        = _cfg["ui"]["hud_height"]
-MUSIC_VOLUME      = _cfg["music_volume"]
+MUSIC_VOLUME      = _cfg[("music_volume")]
 def _get_local_ip():
     import subprocess as _sp
     for iface in ("en0", "en1"):
@@ -252,6 +252,8 @@ def online_lobby_and_select(screen, clock):
 
     net_ready = threading.Event()
     net_error = [None]
+    discovered_host = [None]   # (ip, port) filled by background discovery
+    beacon_stop = threading.Event()
 
     def do_host(mp):
         nonlocal net, room_code
@@ -261,6 +263,11 @@ def online_lobby_and_select(screen, clock):
             if not relay_bound.wait(timeout=5):
                 net_error[0] = "Relay server failed to start"
                 return
+            threading.Thread(
+                target=_netmod.start_host_beacon,
+                args=(RELAY_PORT, beacon_stop),
+                daemon=True,
+            ).start()
             n = _netmod.Network('127.0.0.1', RELAY_PORT)
             code = n.request_host(mp)
             if code is None:
@@ -278,7 +285,8 @@ def online_lobby_and_select(screen, clock):
     def do_join(code):
         nonlocal net
         try:
-            n = _netmod.Network(RELAY_HOST, RELAY_PORT)
+            host, port = discovered_host[0] or (RELAY_HOST, RELAY_PORT)
+            n = _netmod.Network(host, port)
             if n.join(code):
                 net = n
                 net_ready.set()
@@ -286,6 +294,11 @@ def online_lobby_and_select(screen, clock):
                 net_error[0] = n.error or "Failed to join room"
         except Exception as exc:
             net_error[0] = str(exc)
+
+    def do_discover():
+        result = _netmod.discover_host(timeout=8)
+        if result:
+            discovered_host[0] = result
 
     while True:
         clock.tick(60)
@@ -297,9 +310,7 @@ def online_lobby_and_select(screen, clock):
         if phase == "menu":
             h_s = font_mid.render("H  -  Host a game", True, (200, 200, 200))
             j_s = font_mid.render("J  -  Join a game", True, (200, 200, 200))
-            r_s = font_small.render(
-                f"Relay: {RELAY_HOST}:{RELAY_PORT}  (edit relay_host/relay_port in game_settings.json)",
-                True, (90, 90, 90))
+            r_s = font_small.render("Host and joiner must be on the same local network", True, (90, 90, 90))
             screen.blit(h_s, h_s.get_rect(center=(WIDTH // 2, 220)))
             screen.blit(j_s, j_s.get_rect(center=(WIDTH // 2, 280)))
             screen.blit(r_s, r_s.get_rect(center=(WIDTH // 2, 390)))
@@ -333,9 +344,14 @@ def online_lobby_and_select(screen, clock):
             inp_s  = font_big.render(code_input.ljust(6, "_"), True, (100, 255, 100))
             screen.blit(prompt, prompt.get_rect(center=(WIDTH // 2, 200)))
             screen.blit(inp_s,  inp_s.get_rect(center=(WIDTH // 2, 270)))
+            if discovered_host[0]:
+                disc_s = font_small.render(f"Host found: {discovered_host[0][0]}", True, (100, 255, 100))
+            else:
+                disc_s = font_small.render("Searching for host on local network...", True, (160, 160, 160))
+            screen.blit(disc_s, disc_s.get_rect(center=(WIDTH // 2, 325)))
             if status:
                 st_s = font_small.render(status, True, (255, 180, 50))
-                screen.blit(st_s, st_s.get_rect(center=(WIDTH // 2, 360)))
+                screen.blit(st_s, st_s.get_rect(center=(WIDTH // 2, 365)))
 
         elif phase == "join_wait":
             wait_s = font_small.render("Connected! Waiting for host to start...", True, (255, 180, 50))
@@ -387,17 +403,20 @@ def online_lobby_and_select(screen, clock):
                     chars_received[upd["pid"]] = upd["index"]
             if len(chars_received) == max_players:
                 # Build ordered char list and teams
+                beacon_stop.set()
                 chars_list = [CHARACTERS[chars_received[i]] for i in range(max_players)]
                 teams      = [i % 2 for i in range(max_players)] if teams_mode else []
                 return net, net.player_id, chars_list, teams, max_players
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                beacon_stop.set()
                 if net: net.close()
                 return None
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    beacon_stop.set()
                     if net: net.close()
                     return None
 
@@ -406,10 +425,12 @@ def online_lobby_and_select(screen, clock):
                         phase = "host_config"
                         error = None
                     elif event.key == pygame.K_j:
-                        phase      = "join_input"
-                        error      = None
-                        code_input = ""
-                        status     = "Type the 6-character code, then press ENTER"
+                        phase          = "join_input"
+                        error          = None
+                        code_input     = ""
+                        status         = "Type the 6-character code, then press ENTER"
+                        discovered_host[0] = None
+                        threading.Thread(target=do_discover, daemon=True).start()
 
                 elif phase == "host_config":
                     if event.key == pygame.K_2:

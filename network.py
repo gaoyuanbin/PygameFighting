@@ -4,6 +4,43 @@ import socket
 import threading
 import json
 
+DISCOVERY_PORT = 5556
+_BEACON_MSG_PREFIX = "PYGAMEFIGHTING:"
+
+
+def start_host_beacon(relay_port, stop_event):
+    """Broadcast host IP on the LAN every second until stop_event is set."""
+    import time
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    msg = f"{_BEACON_MSG_PREFIX}{relay_port}".encode()
+    while not stop_event.is_set():
+        try:
+            sock.sendto(msg, ('255.255.255.255', DISCOVERY_PORT))
+        except Exception:
+            pass
+        stop_event.wait(1)
+    sock.close()
+
+
+def discover_host(timeout=8):
+    """Listen for a host beacon on the LAN. Returns (host_ip, relay_port) or None."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.settimeout(timeout)
+    try:
+        sock.bind(('', DISCOVERY_PORT))
+        data, addr = sock.recvfrom(256)
+        text = data.decode()
+        if text.startswith(_BEACON_MSG_PREFIX):
+            port = int(text.split(':')[1])
+            return addr[0], port
+    except Exception:
+        pass
+    finally:
+        sock.close()
+    return None
+
 
 class Network:
     def __init__(self, host, port):
