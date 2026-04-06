@@ -9,3 +9,6 @@ you can even dash
 code is in class so mod is easy.
 
 yay please play.
+
+
+Required python module: pygame (pip install pygame).
