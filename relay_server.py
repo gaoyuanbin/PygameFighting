@@ -65,7 +65,6 @@ def handle(conn, addr):
             except (IndexError, ValueError):
                 max_players = 2
 
-            code       = gen_code()
             room_lock  = threading.Lock()
             full_event = threading.Event()
             room = {
@@ -75,9 +74,12 @@ def handle(conn, addr):
                 'full':  full_event,
             }
             with lock:
+                code = gen_code()
+                while code in rooms:
+                    code = gen_code()
                 rooms[code] = room
 
-            # Tell host: code, their player index (0), and max_players
+                # Tell host: code, their player index (0), and max_players
             conn.sendall(f'{code} 0 {max_players}\n'.encode())
             print(f'[+] Room {code} ({max_players}p) opened by {addr}')
 

@@ -164,6 +164,33 @@ class Player:
         # UP
         if dy == -1:
             return pygame.Rect(cx - half_w, cy - radius, half_w * 2, radius)
+
+    def hits_rect(self, other_rect):
+        if not self.attack:
+            return False
+        atk = self.attacks[self.attack]
+        radius = atk["radius"]
+        half_angle = math.radians(atk["degree"] / 2)
+        facing_angle = math.atan2(self.dir[1], self.dir[0])
+        cx = self.x + self.size // 2
+        cy = self.y + self.size // 2
+        points = [
+            (other_rect.centerx, other_rect.centery),
+            (other_rect.left,    other_rect.top),
+            (other_rect.right,   other_rect.top),
+            (other_rect.left,    other_rect.bottom),
+            (other_rect.right,   other_rect.bottom),
+        ]
+        for px, py in points:
+            dist = math.hypot(px - cx, py - cy)
+            if dist > radius:
+                continue
+            angle = math.atan2(py - cy, px - cx)
+            diff = abs(math.atan2(math.sin(angle - facing_angle), math.cos(angle - facing_angle)))
+            if diff <= half_angle:
+                return True
+        return False
+
 def draw_arrow(screen, rect, direction, color):
     dx, dy = direction
     size = 6
@@ -195,6 +222,21 @@ def draw_sector(screen, color, cx, cy, radius, center_angle_deg, spread_deg, ste
         angle = math.radians(center_angle_deg - half + i * spread_deg / steps)
         points.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
     pygame.draw.polygon(screen, color, points)
+
+
+def draw_slash_anim(screen, player, frames):
+    total = player.attacks[player.attack]["frames"]
+    progress = 1.0 - (player.anim / total) if total > 0 else 1.0
+    idx = min(int(progress * len(frames)), len(frames) - 1)
+    dx, dy = player.dir
+    angle = {(1, 0): 0, (-1, 0): 180, (0, 1): -90, (0, -1): 90}.get((dx, dy), 0)
+    rotated = pygame.transform.rotate(frames[idx], angle)
+    radius = player.attacks[player.attack]["radius"]
+    cx = player.x + player.size // 2
+    cy = player.y + player.size // 2
+    sx = cx + dx * (radius // 2) - rotated.get_width() // 2
+    sy = cy + dy * (radius // 2) - rotated.get_height() // 2
+    screen.blit(rotated, (sx, sy))
 
 
 def draw_online_hud(screen, players, chars, teams):
@@ -476,7 +518,6 @@ def online_lobby_and_select(screen, clock):
 
         pygame.display.flip()
 
-    return None
 
 
 def main_menu(screen, clock):
@@ -643,6 +684,16 @@ winner_text = ""
 p1_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "character1.png")).convert_alpha(), (player_size, player_size))
 p2_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "character2.png")).convert_alpha(), (player_size, player_size))
 bg_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "bg.png")).convert(), (WIDTH, HEIGHT))
+_slash_sheet = pygame.image.load(os.path.join(_base, "assets", "normalattack.png")).convert_alpha()
+slash_frames = [
+    _slash_sheet.subsurface((col * 80, row * 80, 80, 80))
+    for row in range(3) for col in range(2)
+]
+_super_sheet = pygame.image.load(os.path.join(_base, "assets", "superattack.png")).convert_alpha()
+super_frames = [
+    _super_sheet.subsurface((col * 80, row * 80, 80, 80))
+    for row in range(4) for col in range(3)
+]
 pygame.mixer.music.load(os.path.join(_base,"assets", "bgm.mp3"))
 
 AI_PRESETS = {
@@ -943,8 +994,7 @@ while running:
                     continue
                 if online_teams and online_teams[_pid] == online_teams[my_pid]:
                     continue  # no friendly fire
-                _hb = _att.get_hitbox()
-                if _hb and _hb.colliderect(me.rect) and not online_hit_reg.get(_pid, False):
+                if _att.hits_rect(me.rect) and not online_hit_reg.get(_pid, False):
                     me.hp -= _att.attacks[_att.attack]["dmg"]
                     online_hit_reg[_pid] = True
                 if not _att.attack:
@@ -1011,21 +1061,31 @@ while running:
             hitbox1 = p1.get_hitbox()
             hitbox2 = p2.get_hitbox()
             if hitbox1:
-                atk1   = p1.attacks[p1.attack]
-                angle1 = math.degrees(math.atan2(p1.dir[1], p1.dir[0]))
-                draw_sector(screen, P1_ATTACK_COLORS[p1.attack],
-                            p1.x + p1.size // 2, p1.y + p1.size // 2,
-                            atk1["radius"], angle1, atk1["degree"])
+                if p1.attack == "normal":
+                    draw_slash_anim(screen, p1, slash_frames)
+                elif p1.attack == "super":
+                    draw_slash_anim(screen, p1, super_frames)
+                else:
+                    atk1   = p1.attacks[p1.attack]
+                    angle1 = math.degrees(math.atan2(p1.dir[1], p1.dir[0]))
+                    draw_sector(screen, P1_ATTACK_COLORS[p1.attack],
+                                p1.x + p1.size // 2, p1.y + p1.size // 2,
+                                atk1["radius"], angle1, atk1["degree"])
             if hitbox2:
-                atk2   = p2.attacks[p2.attack]
-                angle2 = math.degrees(math.atan2(p2.dir[1], p2.dir[0]))
-                draw_sector(screen, P2_ATTACK_COLORS[p2.attack],
-                            p2.x + p2.size // 2, p2.y + p2.size // 2,
-                            atk2["radius"], angle2, atk2["degree"])
+                if p2.attack == "normal":
+                    draw_slash_anim(screen, p2, slash_frames)
+                elif p2.attack == "super":
+                    draw_slash_anim(screen, p2, super_frames)
+                else:
+                    atk2   = p2.attacks[p2.attack]
+                    angle2 = math.degrees(math.atan2(p2.dir[1], p2.dir[0]))
+                    draw_sector(screen, P2_ATTACK_COLORS[p2.attack],
+                                p2.x + p2.size // 2, p2.y + p2.size // 2,
+                                atk2["radius"], angle2, atk2["degree"])
 
-            if hitbox1 and hitbox1.colliderect(p2.rect) and not p1.hit:
+            if p1.hits_rect(p2.rect) and not p1.hit:
                 p2.hp -= ATTACKS[p1.attack]["dmg"]; p1.hit = True
-            if hitbox2 and hitbox2.colliderect(p1.rect) and not p2.hit:
+            if p2.hits_rect(p1.rect) and not p2.hit:
                 p1.hp -= ATTACKS[p2.attack]["dmg"]; p2.hit = True
 
             p1hp = max(0, p1.hp)
