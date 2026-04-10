@@ -20,7 +20,6 @@ maxhp1            = _cfg["default_maxhp"]
 maxhp2            = _cfg["default_maxhp"]
 speed             = _cfg["default_speed"]
 DIFFICULTY        = _cfg["default_difficulty"]
-ENERGY_MOVE_COST  = _cfg["energy"]["move_cost"]
 ENERGY_REGEN_RATE = _cfg["energy"]["regen_rate"]
 BAR_WIDTH         = _cfg["ui"]["bar_width"]
 BAR_HEIGHT        = _cfg["ui"]["bar_height"]
@@ -107,7 +106,7 @@ class Player:
         self.y = max(HUD_HEIGHT, min(self.y, height - self.size))
 
         if not no_cost:
-            self.energy = max(0, self.energy - ENERGY_MOVE_COST)
+            self.energy = max(0, self.energy)
 
     def start_attack(self, name):
         cost = self.attacks[name].get("energy", 0)
@@ -299,12 +298,15 @@ def online_lobby_and_select(screen, clock):
 
     def do_host(mp):
         nonlocal net, room_code
+        global _relay_server_started
         try:
-            relay_bound = threading.Event()
-            threading.Thread(target=_relay.start, args=(RELAY_PORT, relay_bound), daemon=True).start()
-            if not relay_bound.wait(timeout=5):
-                net_error[0] = "Relay server failed to start"
-                return
+            if not _relay_server_started:
+                relay_bound = threading.Event()
+                threading.Thread(target=_relay.start, args=(RELAY_PORT, relay_bound), daemon=True).start()
+                if not relay_bound.wait(timeout=5):
+                    net_error[0] = "Relay server failed to start"
+                    return
+                _relay_server_started = True
             threading.Thread(
                 target=_netmod.start_host_beacon,
                 args=(RELAY_PORT, beacon_stop),
@@ -681,8 +683,8 @@ countdown = 120
 win = False
 running = True
 winner_text = ""
-p1_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "character1.png")).convert_alpha(), (player_size, player_size))
-p2_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "character2.png")).convert_alpha(), (player_size, player_size))
+p1_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "pikachu.png")).convert_alpha(), (player_size, player_size))
+p2_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "magikarp.png")).convert_alpha(), (player_size, player_size))
 bg_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "bg.png")).convert(), (WIDTH, HEIGHT))
 _slash_sheet = pygame.image.load(os.path.join(_base, "assets", "normalattack.png")).convert_alpha()
 slash_frames = [
@@ -733,6 +735,7 @@ ai_think_timer = 0
 energy = True
 
 # Online mode state
+_relay_server_started = False   # relay is a singleton; only bind the port once
 online_mode        = False
 net                = None
 my_pid             = 0

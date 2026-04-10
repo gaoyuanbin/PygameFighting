@@ -9,7 +9,7 @@
   "default_difficulty": "easy",
   "energy": {
     "move_cost": 0.5,
-    "regen_rate": 0.4
+    "regen_rate": 0.5
   },
   "ui": {
     "bar_width": 300,
