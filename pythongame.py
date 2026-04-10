@@ -890,10 +890,23 @@ while running:
                     winner_text = "A PLAYER DISCONNECTED - press enter"
                     pygame.mixer.music.fadeout(2000)
 
-                # Timers / energy / dash for all players
+                # Timers / energy for all players
                 for _p in online_players:
                     _p.update_attack_timers()
                     _p.update_energy()
+                # Hit detection before dash so fast dashes don't overshoot the target
+                for _pid, _att in enumerate(online_players):
+                    if _pid == my_pid:
+                        continue
+                    if online_teams and online_teams[_pid] == online_teams[my_pid]:
+                        continue
+                    if _att.hits_rect(me.rect) and not online_hit_reg.get(_pid, False):
+                        me.hp -= _att.attacks[_att.attack]["dmg"]
+                        online_hit_reg[_pid] = True
+                    if not _att.attack:
+                        online_hit_reg[_pid] = False
+                # Dash movement after hit detection
+                for _p in online_players:
                     _p.dash_move(WIDTH, HEIGHT)
 
             else:
@@ -947,6 +960,12 @@ while running:
 
                 p1.update_attack_timers(); p2.update_attack_timers()
                 if energy: p1.update_energy(); p2.update_energy()
+                _hb1 = p1.get_hitbox()
+                if _hb1 and _hb1.colliderect(p2.rect) and not p1.hit:
+                    p2.hp -= ATTACKS[p1.attack]["dmg"]; p1.hit = True
+                _hb2 = p2.get_hitbox()
+                if _hb2 and _hb2.colliderect(p1.rect) and not p2.hit:
+                    p1.hp -= ATTACKS[p2.attack]["dmg"]; p2.hit = True
                 p1.dash_move(WIDTH, HEIGHT); p2.dash_move(WIDTH, HEIGHT)
 
         # ================================================================
@@ -990,18 +1009,6 @@ while running:
                     draw_sector(screen, online_chars[_pid]["colors"][_p.attack],
                                 _p.x + _p.size // 2, _p.y + _p.size // 2,
                                 _atk["radius"], _ang, _atk["degree"])
-
-            # Hit detection: I'm authoritative about my own HP
-            for _pid, _att in enumerate(online_players):
-                if _pid == my_pid:
-                    continue
-                if online_teams and online_teams[_pid] == online_teams[my_pid]:
-                    continue  # no friendly fire
-                if _att.hits_rect(me.rect) and not online_hit_reg.get(_pid, False):
-                    me.hp -= _att.attacks[_att.attack]["dmg"]
-                    online_hit_reg[_pid] = True
-                if not _att.attack:
-                    online_hit_reg[_pid] = False
 
             # Win overlay
             if win:
@@ -1085,11 +1092,6 @@ while running:
                     draw_sector(screen, P2_ATTACK_COLORS[p2.attack],
                                 p2.x + p2.size // 2, p2.y + p2.size // 2,
                                 atk2["radius"], angle2, atk2["degree"])
-
-            if p1.hits_rect(p2.rect) and not p1.hit:
-                p2.hp -= ATTACKS[p1.attack]["dmg"]; p1.hit = True
-            if p2.hits_rect(p1.rect) and not p2.hit:
-                p1.hp -= ATTACKS[p2.attack]["dmg"]; p2.hit = True
 
             p1hp = max(0, p1.hp)
             p2hp = max(0, p2.hp)
