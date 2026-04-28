@@ -53,6 +53,10 @@ def _load_player(filename):
         data = json.load(f)
     data["colors"] = {k: tuple(v) for k, v in data["colors"].items()}
     data["body"] = tuple(data["body"])
+    # Auto-add colors for any global ability not yet defined for this character
+    for _ab_id, _ab_data in ATTACKS.items():
+        if _ab_id not in data["colors"] and "p1_color" in _ab_data:
+            data["colors"][_ab_id] = tuple(_ab_data["p1_color"])
     return data
 
 with open(os.path.join(_base, "data", "player_default.json")) as f:
@@ -63,11 +67,36 @@ P2_COLORS = {k: tuple(v) for k, v in _default["p2_colors"].items()}
 P1_BODY   = tuple(_default["p1_body"])
 P2_BODY   = tuple(_default["p2_body"])
 
+# Load data-driven abilities from the abilities/ folder
+_abilities_dir = os.path.join(_base, "abilities")
+if os.path.isdir(_abilities_dir):
+    for _ab_file in sorted(os.listdir(_abilities_dir)):
+        if _ab_file.endswith(".json"):
+            with open(os.path.join(_abilities_dir, _ab_file)) as _f:
+                _ab = json.load(_f)
+            _ab_id = _ab["id"]
+            ATTACKS[_ab_id] = _ab
+            if "p1_color" in _ab:
+                P1_COLORS[_ab_id] = tuple(_ab["p1_color"])
+            if "p2_color" in _ab:
+                P2_COLORS[_ab_id] = tuple(_ab["p2_color"])
+
+def build_attacks(char):
+    """Return only the abilities this character is allowed to use.
+    The character's JSON overrides global defaults for any shared ability."""
+    allowed = set(char.get("abilities", ATTACKS.keys()))
+    base     = {k: v for k, v in ATTACKS.items()         if k in allowed}
+    override = {k: v for k, v in char["attacks"].items() if k in allowed}
+    return {**base, **override}
+
 CHARACTERS = [
     _load_player("player_rock.json"),
     _load_player("player_paper.json"),
     _load_player("player_scissors.json"),
 ]
+
+# All character-unique abilities — start_attack silently skips ones not in the player's kit
+_SPEC_ABILITIES = ("fireball", "heavy_strike", "blink")
 
 class Player:
     def __init__(self, x, y, maxhp, attacks, MAX_ENERGY, size=40,):
@@ -89,6 +118,7 @@ class Player:
         self.cooldown = 0
         self.anim = 0
         self.hit = False
+        self.blocking = False
 
     @property
     def rect(self):
@@ -109,8 +139,20 @@ class Player:
             self.energy = max(0, self.energy)
 
     def start_attack(self, name):
+        if name not in self.attacks:
+            return
         cost = self.attacks[name].get("energy", 0)
         if self.cooldown == 0 and self.energy >= cost:
+            # Blink: instantly teleport forward before the animation plays
+            blink_dist = self.attacks[name].get("blink_dist", 0)
+            if blink_dist:
+                dx, dy = self.dir
+                self.x = max(0, min(self.x + dx * blink_dist, WIDTH - self.size))
+                self.y = max(HUD_HEIGHT, min(self.y + dy * blink_dist, HEIGHT - self.size))
+            # Block: mark player as blocking for the ability's duration
+            for _eff in self.attacks[name].get("effects", []):
+                if _eff["type"] == "block":
+                    self.blocking = True
             self.attack = name
             self.anim = self.attacks[name]["frames"]
             self.cooldown = self.attacks[name]["cooldown"]
@@ -125,12 +167,14 @@ class Player:
             self.anim -= 1
             if self.anim == 0:
                 self.attack = None
+                self.blocking = False
 
     def dash_move(self, width, height):
-        if self.attack == "dash" and self.anim > 0:
-            dx, dy = self.dir
-            speed = self.attacks["dash"]["speed"]
-            self.move(dx, dy, speed, width, height, no_cost=True)
+        if self.attack and self.anim > 0:
+            atk = self.attacks[self.attack]
+            if "speed" in atk:
+                dx, dy = self.dir
+                self.move(dx, dy, atk["speed"], width, height, no_cost=True)
 
     def update_energy(self):
         self.energy = min(self.maxenergy, self.energy + ENERGY_REGEN_RATE)
@@ -138,8 +182,9 @@ class Player:
     def get_hitbox(self):
         if not self.attack:
             return None
-
         atk = self.attacks[self.attack]
+        if atk.get("no_hitbox"):
+            return None
         dx, dy = self.dir
 
         radius = atk["radius"]
@@ -168,6 +213,8 @@ class Player:
         if not self.attack:
             return False
         atk = self.attacks[self.attack]
+        if atk.get("no_hitbox"):
+            return False
         radius = atk["radius"]
         half_angle = math.radians(atk["degree"] / 2)
         facing_angle = math.atan2(self.dir[1], self.dir[0])
@@ -189,6 +236,38 @@ class Player:
             if diff <= half_angle:
                 return True
         return False
+
+def apply_effects(attacker, target, ability_name):
+    """Dispatch all effects from an ability onto the target.
+
+    Abilities declare their effects as a list of dicts in their JSON.
+    Supported effect types:
+      - damage   {"type": "damage",    "amount": N}
+      - knockback{"type": "knockback", "force": N}
+      - block    {"type": "block",     "reduction": 0-1}  (self-buff, no target action)
+
+    Falls back to the legacy "dmg" field if no effects list is present.
+    """
+    ability = attacker.attacks[ability_name]
+    effects = ability.get("effects") or [{"type": "damage", "amount": ability.get("dmg", 0)}]
+    for eff in effects:
+        t = eff["type"]
+        if t == "damage":
+            dmg = eff["amount"]
+            # If target is blocking, look up their block reduction
+            if target.blocking and target.attack:
+                for teff in target.attacks.get(target.attack, {}).get("effects", []):
+                    if teff["type"] == "block":
+                        dmg = int(dmg * (1.0 - teff.get("reduction", 0)))
+                        break
+            target.hp -= dmg
+        elif t == "knockback":
+            force = eff.get("force", 0)
+            dx, dy = attacker.dir
+            target.x = max(0, min(target.x + dx * force, WIDTH - target.size))
+            target.y = max(HUD_HEIGHT, min(target.y + dy * force, HEIGHT - target.size))
+        # "block" is a self-buff handled in start_attack; nothing to do to target here
+
 
 def draw_arrow(screen, rect, direction, color):
     dx, dy = direction
@@ -522,6 +601,334 @@ def online_lobby_and_select(screen, clock):
 
 
 
+def run_tutorial(screen, clock):
+    font_big   = pygame.font.SysFont(None, 48)
+    font_mid   = pygame.font.SysFont(None, 34)
+    font_small = pygame.font.SysFont(None, 26)
+    font_title = pygame.font.SysFont(None, 60)
+
+    # ------------------------------------------------------------------ #
+    # Phase 1: character select                                            #
+    # ------------------------------------------------------------------ #
+    char_idx    = 0
+    char_locked = False
+
+    while not char_locked:
+        clock.tick(60)
+        screen.fill((15, 15, 20))
+
+        ts = font_title.render("TUTORIAL  —  Choose Your Character", True, (240, 240, 240))
+        screen.blit(ts, ts.get_rect(center=(WIDTH // 2, 55)))
+
+        char = CHARACTERS[char_idx]
+        box  = pygame.Rect(WIDTH // 2 - 200, 120, 400, 280)
+        pygame.draw.rect(screen, (40, 40, 50), box, border_radius=12)
+        pygame.draw.rect(screen, char["body"], (box.x + 24, box.y + 60, 80, 80))
+
+        nm_s = font_big.render(char["name"], True, (255, 255, 255))
+        screen.blit(nm_s, (box.x + 124, box.y + 60))
+
+        st_s = font_small.render(f"HP: {char['maxhp']}   SPEED: {char['speed']}", True, (200, 200, 200))
+        screen.blit(st_s, (box.x + 124, box.y + 112))
+
+        spec_id = next((ab for ab in _SPEC_ABILITIES if ab in char.get("abilities", [])), None)
+        if spec_id:
+            sp_s = font_small.render(
+                f"Special (Z): {spec_id.replace('_', ' ').title()}",
+                True, (180, 100, 255))
+            screen.blit(sp_s, (box.x + 124, box.y + 142))
+
+        instr_s = font_small.render("A / D  to browse    E  to confirm", True, (160, 160, 160))
+        screen.blit(instr_s, instr_s.get_rect(center=(WIDTH // 2, box.bottom + 28)))
+
+        esc_s = font_small.render("ESC  -  Back to menu", True, (80, 80, 80))
+        screen.blit(esc_s, esc_s.get_rect(center=(WIDTH // 2, HEIGHT - 36)))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return
+                elif event.key == pygame.K_a:
+                    char_idx = (char_idx - 1) % len(CHARACTERS)
+                elif event.key == pygame.K_d:
+                    char_idx = (char_idx + 1) % len(CHARACTERS)
+                elif event.key == pygame.K_e:
+                    char_locked = True
+
+        pygame.display.flip()
+
+    # ------------------------------------------------------------------ #
+    # Build player from chosen character                                   #
+    # ------------------------------------------------------------------ #
+    chosen_char  = CHARACTERS[char_idx]
+    char_attacks = build_attacks(chosen_char)
+    char_colors  = chosen_char["colors"]   # already has all ability colors via _load_player
+    char_maxhp   = chosen_char["maxhp"]
+    char_speed   = chosen_char["speed"]
+
+    spec_ab_id = next((ab for ab in _SPEC_ABILITIES if ab in chosen_char.get("abilities", [])), None)
+
+    SPEC_DESCRIPTIONS = {
+        "heavy_strike": (
+            "A wide, crushing strike.\n"
+            "Deals 40 damage and knocks enemies back hard."
+        ),
+        "fireball": (
+            "Launch a narrow long-range fireball.\n"
+            "Deals 20 damage and knocks the target back."
+        ),
+        "blink": (
+            "Instantly teleport 150px in your facing direction.\n"
+            "No damage — pure speed and repositioning."
+        ),
+    }
+
+    DUMMY_MAX_HP = 80
+    player = Player(80, HEIGHT // 2 - player_size // 2, char_maxhp, char_attacks, 100, size=player_size)
+    dummy  = Player(WIDTH - 160, HEIGHT // 2 - player_size // 2, DUMMY_MAX_HP, ATTACKS, 0, size=player_size)
+
+    # ------------------------------------------------------------------ #
+    # Build step list (special ability step inserted after Block)         #
+    # ------------------------------------------------------------------ #
+    STEPS = [
+        {
+            "title":  "Movement",
+            "body":   "Use  W / A / S / D  to move.",
+            "hint":   "Move in any direction to continue.",
+            "action": "move",
+        },
+        {
+            "title":  "Normal Attack",
+            "body":   "Press  E  to perform a quick normal attack.",
+            "hint":   "Press E to continue.",
+            "action": "key",
+            "key":    pygame.K_e,
+            "attack": "normal",
+        },
+        {
+            "title":  "Dash Attack",
+            "body":   "Press  Q  to dash forward and strike.",
+            "hint":   "Press Q to continue.",
+            "action": "key",
+            "key":    pygame.K_q,
+            "attack": "dash",
+        },
+        {
+            "title":  "Super Attack",
+            "body":   "Press  R  for a powerful long-range attack.",
+            "hint":   "Press R to continue.",
+            "action": "key",
+            "key":    pygame.K_r,
+            "attack": "super",
+        },
+        {
+            "title":  "Block",
+            "body":   "Press  F  to block and reduce incoming damage.",
+            "hint":   "Press F to continue.",
+            "action": "key",
+            "key":    pygame.K_f,
+            "attack": "block",
+        },
+    ]
+
+    if spec_ab_id:
+        spec_name = spec_ab_id.replace("_", " ").title()
+        STEPS.append({
+            "title":  f"Special Ability: {spec_name}",
+            "body":   SPEC_DESCRIPTIONS.get(spec_ab_id, "Your character's unique ability."),
+            "hint":   "Press Z to use your special ability and continue.",
+            "action": "key",
+            "key":    pygame.K_z,
+            "attack": spec_ab_id,
+        })
+
+    STEPS += [
+        {
+            "title":  "Energy Bar",
+            "body":   "The yellow bar is your energy. Attacks cost energy. \n"
+                      "Energy is regenerated over time.\n",
+            "hint":   "Watch the yellow bar refill, then press SPACE.",
+            "action": "key",
+            "key":    pygame.K_SPACE,
+            "drain_energy": True,
+        },
+        {
+            "title":  "Practice Fight!",
+            "body":   "Defeat the dummy using everything you've learned.\n"
+                      "The dummy won't attack back.",
+            "hint":   "Reduce the dummy's HP to zero.",
+            "action": "kill_dummy",
+        },
+        {
+            "title":  "Tutorial Complete!",
+            "body":   "You're ready to fight!\n"
+                      "Press ENTER to return to the main menu.",
+            "hint":   "",
+            "action": "enter",
+            "key":    pygame.K_RETURN,
+        },
+    ]
+
+    step_idx  = 0
+    step_done = False
+
+    def draw_hud():
+        hud = pygame.Surface((WIDTH, HUD_HEIGHT), pygame.SRCALPHA)
+        hud.fill((0, 0, 0, 180))
+        screen.blit(hud, (0, 0))
+        p_hp = max(0, player.hp)
+        pygame.draw.rect(screen, (100, 100, 100), (50, 10, BAR_WIDTH, BAR_HEIGHT))
+        pygame.draw.rect(screen, (50, 255, 50),   (50, 10, int(BAR_WIDTH * p_hp / char_maxhp), BAR_HEIGHT))
+        pygame.draw.rect(screen, (60, 60, 60),    (50, 37, BAR_WIDTH, ENERGY_BAR_HEIGHT))
+        pygame.draw.rect(screen, (255, 200, 0),   (50, 37, int(BAR_WIDTH * player.energy / player.maxenergy), ENERGY_BAR_HEIGHT))
+        lbl = font_small.render(chosen_char["name"], True, (200, 200, 200))
+        screen.blit(lbl, (50, 55))
+        if step_idx >= len(STEPS) - 2:
+            d_hp = max(0, dummy.hp)
+            dw   = BAR_WIDTH // 2
+            pygame.draw.rect(screen, (100, 100, 100), (WIDTH - 50 - dw, 10, dw, BAR_HEIGHT))
+            pygame.draw.rect(screen, (255, 80, 80),   (WIDTH - 50 - dw, 10, int(dw * d_hp / DUMMY_MAX_HP), BAR_HEIGHT))
+            dlbl = font_small.render("DUMMY", True, (200, 200, 200))
+            screen.blit(dlbl, dlbl.get_rect(topright=(WIDTH - 50, 55)))
+
+    def draw_instruction_box(step):
+        box_h = 140
+        box_y = HEIGHT - box_h - 10
+        box   = pygame.Rect(20, box_y, WIDTH - 40, box_h)
+        surf  = pygame.Surface((box.width, box.height), pygame.SRCALPHA)
+        surf.fill((0, 0, 0, 200))
+        screen.blit(surf, (box.x, box.y))
+        # Purple border for special ability step, blue otherwise
+        border_col = (200, 100, 255) if step.get("key") == pygame.K_z else (100, 150, 255)
+        pygame.draw.rect(screen, border_col, box, 2, border_radius=8)
+
+        title_col = (200, 120, 255) if step.get("key") == pygame.K_z else (100, 200, 255)
+        title_s = font_big.render(f"[{step_idx + 1}/{len(STEPS)}]  {step['title']}", True, title_col)
+        screen.blit(title_s, (box.x + 16, box.y + 10))
+
+        for li, line in enumerate(step["body"].split("\n")):
+            ls = font_mid.render(line, True, (230, 230, 230))
+            screen.blit(ls, (box.x + 16, box.y + 52 + li * 28))
+
+        if step["hint"]:
+            if step.get("drain_energy") and player.energy < player.maxenergy:
+                hint_text = "Energy refilling... wait for the bar to fill up."
+                hint_col  = (255, 200, 80)
+            else:
+                hint_text = step["hint"]
+                hint_col  = (160, 255, 160)
+            hint_s = font_small.render(hint_text, True, hint_col)
+            screen.blit(hint_s, (box.x + 16, box.y + box_h - 26))
+
+    # ------------------------------------------------------------------ #
+    # Phase 2: step loop                                                   #
+    # ------------------------------------------------------------------ #
+    while True:
+        clock.tick(60)
+        step = STEPS[step_idx]
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return
+                if step["action"] == "key" and event.key == step["key"] and not step_done:
+                    energy_ready = (not step.get("drain_energy")
+                                    or player.energy >= player.maxenergy)
+                    if energy_ready:
+                        step_done = True
+                        if "attack" in step:
+                            player.start_attack(step["attack"])
+                if step["action"] == "enter" and event.key == pygame.K_RETURN:
+                    return
+
+        keys = pygame.key.get_pressed()
+
+        if not step_done:
+            moved = False
+            if keys[pygame.K_a]: player.move(-1, 0, char_speed, WIDTH, HEIGHT); moved = True
+            if keys[pygame.K_d]: player.move(1,  0, char_speed, WIDTH, HEIGHT); moved = True
+            if keys[pygame.K_w]: player.move(0, -1, char_speed, WIDTH, HEIGHT); moved = True
+            if keys[pygame.K_s]: player.move(0,  1, char_speed, WIDTH, HEIGHT); moved = True
+            if step["action"] == "move" and moved:
+                step_done = True
+        else:
+            if keys[pygame.K_a]: player.move(-1, 0, char_speed, WIDTH, HEIGHT)
+            if keys[pygame.K_d]: player.move(1,  0, char_speed, WIDTH, HEIGHT)
+            if keys[pygame.K_w]: player.move(0, -1, char_speed, WIDTH, HEIGHT)
+            if keys[pygame.K_s]: player.move(0,  1, char_speed, WIDTH, HEIGHT)
+
+        if step["action"] == "kill_dummy":
+            if keys[pygame.K_r]:   player.start_attack("super")
+            elif keys[pygame.K_q]: player.start_attack("dash")
+            elif keys[pygame.K_e]: player.start_attack("normal")
+            elif keys[pygame.K_f]: player.start_attack("block")
+            elif keys[pygame.K_z]:
+                for _s in _SPEC_ABILITIES: player.start_attack(_s)
+
+        player.update_attack_timers()
+        player.update_energy()
+        dummy.update_attack_timers()
+
+        hb = player.get_hitbox()
+        if hb and hb.colliderect(dummy.rect) and not player.hit:
+            apply_effects(player, dummy, player.attack)
+            player.hit = True
+        player.dash_move(WIDTH, HEIGHT)
+
+        if step["action"] == "kill_dummy" and dummy.hp <= 0:
+            step_done = True
+
+        if step_done and step["action"] != "enter":
+            step_idx += 1
+            step_done = False
+            if step_idx >= len(STEPS):
+                return
+            next_step = STEPS[step_idx]
+            if next_step.get("drain_energy"):
+                player.energy = 0
+            if next_step["action"] == "kill_dummy":
+                dummy.hp = DUMMY_MAX_HP
+                player.x = 80
+                player.y = HEIGHT // 2 - player_size // 2
+                dummy.x  = WIDTH - 160
+                dummy.y  = HEIGHT // 2 - player_size // 2
+
+        screen.blit(bg_img, (0, 0))
+
+        if step_idx >= len(STEPS) - 2:
+            pygame.draw.rect(screen, (180, 60, 60), dummy.rect)
+            dlbl = font_small.render("DUMMY", True, (255, 200, 200))
+            screen.blit(dlbl, dlbl.get_rect(centerx=dummy.rect.centerx, bottom=dummy.rect.top - 4))
+
+        screen.blit(p1_img, player.rect)
+        draw_arrow(screen, player.rect, player.dir, (255, 100, 100))
+        phb = player.get_hitbox()
+        if phb:
+            atk = player.attacks[player.attack]
+            col = char_colors.get(player.attack, P1_COLORS.get(player.attack, (255, 255, 255)))
+            draw_sector(screen, col,
+                        player.x + player.size // 2, player.y + player.size // 2,
+                        atk["radius"],
+                        math.degrees(math.atan2(player.dir[1], player.dir[0])),
+                        atk["degree"])
+        if player.blocking:
+            pygame.draw.circle(screen, char_colors.get("block", (100, 200, 255)),
+                               (int(player.x + player.size // 2), int(player.y + player.size // 2)),
+                               player.size + 8, 4)
+
+        draw_hud()
+        draw_instruction_box(STEPS[step_idx])
+
+        esc_s = font_small.render("ESC - Exit Tutorial", True, (80, 80, 80))
+        screen.blit(esc_s, (WIDTH - esc_s.get_width() - 10, HEIGHT - esc_s.get_height() - 150))
+
+        pygame.display.flip()
+
+
 def main_menu(screen, clock):
     font_title = pygame.font.SysFont(None, 96)
     font_hint = pygame.font.SysFont(None, 36)
@@ -538,6 +945,7 @@ def main_menu(screen, clock):
         hint1 = font_hint.render("ENTER  - Local Multiplayer", True, (200, 200, 200))
         hint2 = font_hint.render("RSHIFT - Singleplayer", True, (200, 200, 200))
         hint_o = font_hint.render("O      - Online Multiplayer", True, (100, 220, 255))
+        hint_t = font_hint.render("T      - Tutorial", True, (100, 255, 160))
         hint3 = font_small.render("LEFT / RIGHT - Difficulty", True, (150, 150, 150))
         hint4 = font_small.render(
             f"Difficulty: {difficulties[diff_index].upper()}",
@@ -545,12 +953,13 @@ def main_menu(screen, clock):
             (255, 180, 50)
         )
 
-        screen.blit(title,  title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 140)))
-        screen.blit(hint1,  hint1.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 20)))
-        screen.blit(hint2,  hint2.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 25)))
-        screen.blit(hint_o, hint_o.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 70)))
-        screen.blit(hint3,  hint3.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 130)))
-        screen.blit(hint4,  hint4.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 165)))
+        screen.blit(title,  title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 160)))
+        screen.blit(hint1,  hint1.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 40)))
+        screen.blit(hint2,  hint2.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 5)))
+        screen.blit(hint_o, hint_o.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 50)))
+        screen.blit(hint_t, hint_t.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 95)))
+        screen.blit(hint3,  hint3.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 150)))
+        screen.blit(hint4,  hint4.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 185)))
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -571,6 +980,9 @@ def main_menu(screen, clock):
 
                 if event.key == pygame.K_o:
                     return "online", None
+
+                if event.key == pygame.K_t:
+                    return "tutorial", None
 
                 if event.key == pygame.K_ESCAPE:
                     return "quit", None
@@ -760,6 +1172,10 @@ while running:
     if menu_result == "quit":
         break
 
+    if menu_result == "tutorial":
+        run_tutorial(screen, clock)
+        continue
+
     online_mode = False
     net = None
 
@@ -792,7 +1208,7 @@ while running:
         for _i in range(_max_p):
             _c   = online_chars[_i]
             _pos = start_pos[_i]
-            online_players.append(Player(_pos[0], _pos[1], _c["maxhp"], _c["attacks"], 100, size=player_size))
+            online_players.append(Player(_pos[0], _pos[1], _c["maxhp"], build_attacks(_c), 100, size=player_size))
         online_player_speed = [c["speed"] for c in online_chars]
 
         # p1/p2 are unused in online mode but must exist to avoid NameErrors
@@ -809,8 +1225,8 @@ while running:
         if c1 is None:  # cancelled
             continue
 
-        p1 = Player(10, 10, c1["maxhp"], c1["attacks"], 100, size=player_size)
-        p2 = Player(800, 400, c2["maxhp"], c2["attacks"], 100, size=player_size)
+        p1 = Player(10, 10, c1["maxhp"], build_attacks(c1), 100, size=player_size)
+        p2 = Player(800, 400, c2["maxhp"], build_attacks(c2), 100, size=player_size)
 
         maxhp1 = c1["maxhp"]
         maxhp2 = c2["maxhp"]
@@ -861,6 +1277,9 @@ while running:
                 if keys[pygame.K_r]:   me.start_attack("super")
                 elif keys[pygame.K_q]: me.start_attack("dash")
                 elif keys[pygame.K_e]: me.start_attack("normal")
+                elif keys[pygame.K_f]: me.start_attack("block")
+                elif keys[pygame.K_z]:
+                    for _s in _SPEC_ABILITIES: me.start_attack(_s)
 
                 # Receive all other players' states
                 for upd in net.get_updates():
@@ -901,7 +1320,7 @@ while running:
                     if online_teams and online_teams[_pid] == online_teams[my_pid]:
                         continue
                     if _att.hits_rect(me.rect) and not online_hit_reg.get(_pid, False):
-                        me.hp -= _att.attacks[_att.attack]["dmg"]
+                        apply_effects(_att, me, _att.attack)
                         online_hit_reg[_pid] = True
                     if not _att.attack:
                         online_hit_reg[_pid] = False
@@ -936,6 +1355,9 @@ while running:
                 if keys[pygame.K_r]:   p1.start_attack("super")
                 elif keys[pygame.K_q]: p1.start_attack("dash")
                 elif keys[pygame.K_e]: p1.start_attack("normal")
+                elif keys[pygame.K_f]: p1.start_attack("block")
+                elif keys[pygame.K_z]:
+                    for _s in _SPEC_ABILITIES: p1.start_attack(_s)
 
                 if singleplayer:
                     preset = AI_PRESETS[DIFFICULTY]
@@ -954,18 +1376,21 @@ while running:
                             elif dist < 60:                                     p2.start_attack("normal")
                             elif dist < 180 and roll < preset["dash_chance"]:  p2.start_attack("dash")
                 else:
-                    if keys[pygame.K_PERIOD]:  p2.start_attack("super")
-                    elif keys[pygame.K_RSHIFT]: p2.start_attack("dash")
-                    elif keys[pygame.K_SLASH]:  p2.start_attack("normal")
+                    if keys[pygame.K_PERIOD]:           p2.start_attack("super")
+                    elif keys[pygame.K_RSHIFT]:         p2.start_attack("dash")
+                    elif keys[pygame.K_SLASH]:          p2.start_attack("normal")
+                    elif keys[pygame.K_SEMICOLON]:
+                        for _s in _SPEC_ABILITIES: p2.start_attack(_s)
+                    elif keys[pygame.K_QUOTE]:          p2.start_attack("block")
 
                 p1.update_attack_timers(); p2.update_attack_timers()
                 if energy: p1.update_energy(); p2.update_energy()
                 _hb1 = p1.get_hitbox()
                 if _hb1 and _hb1.colliderect(p2.rect) and not p1.hit:
-                    p2.hp -= ATTACKS[p1.attack]["dmg"]; p1.hit = True
+                    apply_effects(p1, p2, p1.attack); p1.hit = True
                 _hb2 = p2.get_hitbox()
                 if _hb2 and _hb2.colliderect(p1.rect) and not p2.hit:
-                    p1.hp -= ATTACKS[p2.attack]["dmg"]; p2.hit = True
+                    apply_effects(p2, p1, p2.attack); p2.hit = True
                 p1.dash_move(WIDTH, HEIGHT); p2.dash_move(WIDTH, HEIGHT)
 
         # ================================================================
@@ -1009,6 +1434,11 @@ while running:
                     draw_sector(screen, online_chars[_pid]["colors"][_p.attack],
                                 _p.x + _p.size // 2, _p.y + _p.size // 2,
                                 _atk["radius"], _ang, _atk["degree"])
+                if _p.blocking:
+                    _bcol = online_chars[_pid]["colors"].get("block", (100, 200, 255))
+                    pygame.draw.circle(screen, _bcol,
+                                       (int(_p.x + _p.size // 2), int(_p.y + _p.size // 2)),
+                                       _p.size + 8, 4)
 
             # Win overlay
             if win:
@@ -1071,27 +1501,35 @@ while running:
             hitbox1 = p1.get_hitbox()
             hitbox2 = p2.get_hitbox()
             if hitbox1:
-                if p1.attack == "normal":
-                    draw_slash_anim(screen, p1, slash_frames)
-                elif p1.attack == "super":
-                    draw_slash_anim(screen, p1, super_frames)
-                else:
-                    atk1   = p1.attacks[p1.attack]
-                    angle1 = math.degrees(math.atan2(p1.dir[1], p1.dir[0]))
-                    draw_sector(screen, P1_ATTACK_COLORS[p1.attack],
-                                p1.x + p1.size // 2, p1.y + p1.size // 2,
-                                atk1["radius"], angle1, atk1["degree"])
+                # if p1.attack == "normal":
+                #     draw_slash_anim(screen, p1, slash_frames)
+                # elif p1.attack == "super":
+                #     draw_slash_anim(screen, p1, super_frames)
+                # else:
+                atk1   = p1.attacks[p1.attack]
+                angle1 = math.degrees(math.atan2(p1.dir[1], p1.dir[0]))
+                draw_sector(screen, P1_ATTACK_COLORS[p1.attack],
+                            p1.x + p1.size // 2, p1.y + p1.size // 2,
+                            atk1["radius"], angle1, atk1["degree"])
             if hitbox2:
-                if p2.attack == "normal":
-                    draw_slash_anim(screen, p2, slash_frames)
-                elif p2.attack == "super":
-                    draw_slash_anim(screen, p2, super_frames)
-                else:
-                    atk2   = p2.attacks[p2.attack]
-                    angle2 = math.degrees(math.atan2(p2.dir[1], p2.dir[0]))
-                    draw_sector(screen, P2_ATTACK_COLORS[p2.attack],
-                                p2.x + p2.size // 2, p2.y + p2.size // 2,
-                                atk2["radius"], angle2, atk2["degree"])
+                # if p2.attack == "normal":
+                #     draw_slash_anim(screen, p2, slash_frames)
+                # elif p2.attack == "super":
+                #     draw_slash_anim(screen, p2, super_frames)
+                # else:
+                atk2   = p2.attacks[p2.attack]
+                angle2 = math.degrees(math.atan2(p2.dir[1], p2.dir[0]))
+                draw_sector(screen, P2_ATTACK_COLORS[p2.attack],
+                            p2.x + p2.size // 2, p2.y + p2.size // 2,
+                            atk2["radius"], angle2, atk2["degree"])
+            if p1.blocking:
+                pygame.draw.circle(screen, P1_ATTACK_COLORS.get("block", (100, 200, 255)),
+                                   (int(p1.x + p1.size // 2), int(p1.y + p1.size // 2)),
+                                   p1.size + 8, 4)
+            if p2.blocking:
+                pygame.draw.circle(screen, P2_ATTACK_COLORS.get("block", (80, 160, 200)),
+                                   (int(p2.x + p2.size // 2), int(p2.y + p2.size // 2)),
+                                   p2.size + 8, 4)
 
             p1hp = max(0, p1.hp)
             p2hp = max(0, p2.hp)

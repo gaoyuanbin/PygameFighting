@@ -1,0 +1,14 @@
+{
+  "id": "block",
+  "radius": 0,
+  "degree": 360,
+  "frames": 40,
+  "cooldown": 60,
+  "energy": 15,
+  "no_hitbox": true,
+  "effects": [
+    {"type": "block", "reduction": 0.5}
+  ],
+  "p1_color": [100, 200, 255],
+  "p2_color": [80, 160, 200]
+}

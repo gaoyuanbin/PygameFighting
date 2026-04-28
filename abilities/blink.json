@@ -1,0 +1,13 @@
+{
+  "id": "blink",
+  "radius": 0,
+  "degree": 360,
+  "frames": 8,
+  "cooldown": 45,
+  "energy": 20,
+  "no_hitbox": true,
+  "blink_dist": 150,
+  "effects": [],
+  "p1_color": [100, 255, 200],
+  "p2_color": [60, 200, 150]
+}

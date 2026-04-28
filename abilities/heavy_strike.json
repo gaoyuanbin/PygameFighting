@@ -1,0 +1,14 @@
+{
+  "id": "heavy_strike",
+  "radius": 85,
+  "degree": 130,
+  "frames": 25,
+  "cooldown": 75,
+  "energy": 28,
+  "effects": [
+    {"type": "damage", "amount": 40},
+    {"type": "knockback","force": 60}
+  ],
+  "p1_color": [180, 60, 180],
+  "p2_color": [120, 40, 120]
+}

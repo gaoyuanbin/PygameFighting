@@ -3,6 +3,7 @@
   "name": "PAPER",
   "maxhp": 100,
   "speed": 10,
+  "abilities": ["normal", "super", "dash", "fireball", "block"],
   "attacks": {
     "normal": {"dmg": 10, "radius": 90,  "degree": 100, "frames": 10, "cooldown": 25, "energy": 10},
     "super":  {"dmg": 22, "radius": 280, "degree": 90,  "frames": 18, "cooldown": 65, "energy": 25},

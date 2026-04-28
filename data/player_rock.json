@@ -3,6 +3,7 @@
   "name": "ROCK",
   "maxhp": 140,
   "speed": 7,
+  "abilities": ["normal", "super", "dash", "heavy_strike", "block"],
   "attacks": {
     "normal": {"dmg": 20, "radius": 70,  "degree": 80,  "frames": 10, "cooldown": 30, "energy": 10},
     "super":  {"dmg": 40, "radius": 120, "degree": 100, "frames": 20, "cooldown": 90, "energy": 25},

@@ -1,0 +1,14 @@
+{
+  "id": "fireball",
+  "radius": 180,
+  "degree": 40,
+  "frames": 18,
+  "cooldown": 55,
+  "energy": 22,
+  "effects": [
+    {"type": "damage", "amount": 20},
+    {"type": "knockback", "force": 40}
+  ],
+  "p1_color": [255, 80, 20],
+  "p2_color": [200, 60, 10]
+}
