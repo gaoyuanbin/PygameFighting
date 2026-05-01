@@ -1,0 +1,15 @@
+{
+  "id": "poison_cloud",
+  "radius": 130,
+  "degree": 300,
+  "frames": 30,
+  "cooldown": 70,
+  "energy": 20,
+  "no_hitbox": false,
+  "effects": [
+    {"type": "damage",  "amount": 8},
+    {"type": "poison",  "duration": 240, "damage_per_tick": 2, "tick_rate": "medium"}
+  ],
+  "p1_color": [130, 60, 200],
+  "p2_color": [90,  30, 150]
+}

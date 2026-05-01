@@ -1,0 +1,15 @@
+{
+  "id": "slam",
+  "radius": 90,
+  "degree": 140,
+  "frames": 30,
+  "cooldown": 80,
+  "energy": 25,
+  "effects": [
+    {"type": "damage",   "amount": 30},
+    {"type": "knockback","force": 40},
+    {"type": "stun",     "duration": 90}
+  ],
+  "p1_color": [180, 220, 100],
+  "p2_color": [120, 160, 60]
+}

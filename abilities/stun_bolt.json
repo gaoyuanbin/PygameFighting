@@ -1,0 +1,14 @@
+{
+  "id": "stun_bolt",
+  "radius": 260,
+  "degree": 18,
+  "frames": 12,
+  "cooldown": 55,
+  "energy": 22,
+  "effects": [
+    {"type": "damage", "amount": 5},
+    {"type": "stun",   "duration": 90}
+  ],
+  "p1_color": [255, 240, 60],
+  "p2_color": [200, 180, 20]
+}

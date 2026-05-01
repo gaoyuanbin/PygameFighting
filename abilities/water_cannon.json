@@ -1,0 +1,15 @@
+{
+  "id": "water_cannon",
+  "radius": 350,
+  "degree": 22,
+  "frames": 22,
+  "cooldown": 65,
+  "energy": 25,
+  "effects": [
+    {"type": "damage",   "amount": 28},
+    {"type": "knockback","force": 80},
+    {"type": "slow",     "duration": 120, "multiplier": 0.4, "tick_rate": "fast"}
+  ],
+  "p1_color": [80, 180, 255],
+  "p2_color": [40, 120, 200]
+}

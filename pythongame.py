@@ -90,13 +90,30 @@ def build_attacks(char):
     return {**base, **override}
 
 CHARACTERS = [
-    _load_player("player_rock.json"),
-    _load_player("player_paper.json"),
-    _load_player("player_scissors.json"),
+    _load_player("player_golem.json"),
+    _load_player("player_arcanine.json"),
+    _load_player("player_pikachu.json"),
+    _load_player("player_gengar.json"),
+    _load_player("player_slowpoke.json"),
+    _load_player("player_magikarp.json"),
+    _load_player("player_snorlax.json"),
+    _load_player("player_mewtwo.json"),
+    _load_player("player_blastoise.json"),
+    _load_player("player_jolteon.json"),
 ]
 
 # All character-unique abilities — start_attack silently skips ones not in the player's kit
-_SPEC_ABILITIES = ("fireball", "heavy_strike", "blink")
+_SPEC_ABILITIES = ("fireball", "heavy_strike", "blink", "poison_cloud", "regen_burst", "slam", "psystrike", "water_cannon", "stun_bolt")
+
+TICK_RATES = {"fast": 1, "medium": 30, "slow": 60}
+
+STATUS_COLORS = {
+    "burn":   (255, 80,  0),
+    "slow":   (0,   150, 255),
+    "stun":   (255, 255, 0),
+    "regen":  (0,   255, 100),
+    "poison": (100, 255, 50),
+}
 
 class Player:
     def __init__(self, x, y, maxhp, attacks, MAX_ENERGY, size=40,):
@@ -119,14 +136,21 @@ class Player:
         self.anim = 0
         self.hit = False
         self.blocking = False
+        self.status_effects = []  # [{"type", "duration", "tick_rate", "_tick", ...}]
 
     @property
     def rect(self):
         return pygame.Rect(self.x, self.y, self.size, self.size)
 
     def move(self, dx, dy, speed, width, height, no_cost=False):
+        if any(e["type"] == "stun" for e in self.status_effects):
+            return
         if not no_cost and self.energy <= 0:
             return
+        for e in self.status_effects:
+            if e["type"] == "slow":
+                speed = int(speed * e.get("multiplier", 0.5))
+                break
 
         self.x += dx * speed
         self.y += dy * speed
@@ -178,6 +202,24 @@ class Player:
 
     def update_energy(self):
         self.energy = min(self.maxenergy, self.energy + ENERGY_REGEN_RATE)
+
+    def update_status_effects(self):
+        alive = []
+        for eff in self.status_effects:
+            eff["duration"] -= 1
+            eff["_tick"] = eff.get("_tick", 0) + 1
+            rate = TICK_RATES.get(eff.get("tick_rate", "fast"), 1)
+            if eff["_tick"] >= rate:
+                eff["_tick"] = 0
+                if eff["type"] == "burn":
+                    self.hp -= eff.get("damage_per_tick", 2)
+                elif eff["type"] == "poison":
+                    self.hp -= eff.get("damage_per_tick", 1)
+                elif eff["type"] == "regen":
+                    self.hp = min(self.maxhp, self.hp + eff.get("heal_per_tick", 1))
+            if eff["duration"] > 0:
+                alive.append(eff)
+        self.status_effects = alive
 
     def get_hitbox(self):
         if not self.attack:
@@ -266,6 +308,12 @@ def apply_effects(attacker, target, ability_name):
             dx, dy = attacker.dir
             target.x = max(0, min(target.x + dx * force, WIDTH - target.size))
             target.y = max(HUD_HEIGHT, min(target.y + dy * force, HEIGHT - target.size))
+        elif t in ("burn", "poison", "slow", "stun", "regen"):
+            entry = {k: v for k, v in eff.items()}
+            entry.setdefault("_tick", 0)
+            target.status_effects.append(entry)
+        elif t == "recoil":
+            attacker.hp -= eff.get("amount", 0)
         # "block" is a self-buff handled in start_attack; nothing to do to target here
 
 
@@ -293,13 +341,15 @@ def draw_arrow(screen, rect, direction, color):
     pygame.draw.polygon(screen, color, [tip, left, right])
 
 
-def draw_sector(screen, color, cx, cy, radius, center_angle_deg, spread_deg, steps=20):
+def draw_sector(screen, color, cx, cy, radius, center_angle_deg, spread_deg, steps=20, alpha=128):
     half = spread_deg / 2
     points = [(cx, cy)]
     for i in range(steps + 1):
         angle = math.radians(center_angle_deg - half + i * spread_deg / steps)
         points.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
-    pygame.draw.polygon(screen, color, points)
+    surf = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
+    pygame.draw.polygon(surf, (*color[:3], alpha), points)
+    screen.blit(surf, (0, 0))
 
 
 def draw_slash_anim(screen, player, frames):
@@ -667,6 +717,7 @@ def run_tutorial(screen, clock):
     char_colors  = chosen_char["colors"]   # already has all ability colors via _load_player
     char_maxhp   = chosen_char["maxhp"]
     char_speed   = chosen_char["speed"]
+    char_img     = _load_char_img(chosen_char, _default_p1_img)
 
     spec_ab_id = next((ab for ab in _SPEC_ABILITIES if ab in chosen_char.get("abilities", [])), None)
 
@@ -683,6 +734,13 @@ def run_tutorial(screen, clock):
             "Instantly teleport 150px in your facing direction.\n"
             "No damage — pure speed and repositioning."
         ),
+        "poison_cloud":(
+            "Poof a cloud of poison. \n"
+            "Deals 8 damage and poisons the target for "
+        ),
+        "":(
+            ""
+        )
     }
 
     DUMMY_MAX_HP = 80
@@ -740,7 +798,7 @@ def run_tutorial(screen, clock):
             "body":   SPEC_DESCRIPTIONS.get(spec_ab_id, "Your character's unique ability."),
             "hint":   "Press Z to use your special ability and continue.",
             "action": "key",
-            "key":    pygame.K_z,
+            "key":    pygame.K_z, 
             "attack": spec_ab_id,
         })
 
@@ -904,7 +962,7 @@ def run_tutorial(screen, clock):
             dlbl = font_small.render("DUMMY", True, (255, 200, 200))
             screen.blit(dlbl, dlbl.get_rect(centerx=dummy.rect.centerx, bottom=dummy.rect.top - 4))
 
-        screen.blit(p1_img, player.rect)
+        screen.blit(char_img, player.rect)
         draw_arrow(screen, player.rect, player.dir, (255, 100, 100))
         phb = player.get_hitbox()
         if phb:
@@ -941,7 +999,7 @@ def main_menu(screen, clock):
         clock.tick(60)
         screen.fill((20, 20, 20))
 
-        title = font_title.render("PYGAME FIGHTING", True, (255, 255, 255))
+        title = font_title.render("RANDOM BATTLE ROYALE", True, (255, 255, 255))
         hint1 = font_hint.render("ENTER  - Local Multiplayer", True, (200, 200, 200))
         hint2 = font_hint.render("RSHIFT - Singleplayer", True, (200, 200, 200))
         hint_o = font_hint.render("O      - Online Multiplayer", True, (100, 220, 255))
@@ -1084,7 +1142,7 @@ def character_select(screen, clock):
 pygame.init()
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Pygame fighting")
+pygame.display.set_caption("Random Battle Royale")
 
 clock = pygame.time.Clock()
 
@@ -1095,9 +1153,22 @@ countdown = 120
 win = False
 running = True
 winner_text = ""
-p1_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "pikachu.png")).convert_alpha(), (player_size, player_size))
-p2_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "magikarp.png")).convert_alpha(), (player_size, player_size))
+_default_p1_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "pikachu.png")).convert_alpha(), (player_size, player_size))
+_default_p2_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "magikarp.png")).convert_alpha(), (player_size, player_size))
 bg_img = pygame.transform.scale(pygame.image.load(os.path.join(_base,"assets", "bg.png")).convert(), (WIDTH, HEIGHT))
+
+def _load_char_img(char, fallback):
+    img_name = char.get("image")
+    if img_name:
+        path = os.path.join(_base, "assets", img_name)
+        if os.path.isfile(path):
+            return pygame.transform.scale(
+                pygame.image.load(path).convert_alpha(), (player_size, player_size)
+            )
+    return fallback
+
+p1_img = _default_p1_img
+p2_img = _default_p2_img
 _slash_sheet = pygame.image.load(os.path.join(_base, "assets", "normalattack.png")).convert_alpha()
 slash_frames = [
     _slash_sheet.subsurface((col * 80, row * 80, 80, 80))
@@ -1187,6 +1258,8 @@ while running:
         p1 = Player(10, 10, maxhp1, ATTACKS,10000000, size=player_size)
         p2 = Player(800, 400, maxhp2, ATTACKS,10000000, size=player_size)
 
+        p1_img = _default_p1_img
+        p2_img = _default_p2_img
         p1_speed = speed
         p2_speed = speed
         P1_ATTACK_COLORS = P1_COLORS
@@ -1228,6 +1301,8 @@ while running:
         p1 = Player(10, 10, c1["maxhp"], build_attacks(c1), 100, size=player_size)
         p2 = Player(800, 400, c2["maxhp"], build_attacks(c2), 100, size=player_size)
 
+        p1_img = _load_char_img(c1, _default_p1_img)
+        p2_img = _load_char_img(c2, _default_p2_img)
         maxhp1 = c1["maxhp"]
         maxhp2 = c2["maxhp"]
         p1_speed = c1["speed"]
@@ -1312,6 +1387,7 @@ while running:
                 # Timers / energy for all players
                 for _p in online_players:
                     _p.update_attack_timers()
+                    _p.update_status_effects()
                     _p.update_energy()
                 # Hit detection before dash so fast dashes don't overshoot the target
                 for _pid, _att in enumerate(online_players):
@@ -1324,6 +1400,12 @@ while running:
                         online_hit_reg[_pid] = True
                     if not _att.attack:
                         online_hit_reg[_pid] = False
+                # Self-cast abilities (e.g. regen_burst) applied to the caster
+                if (me.attack and not online_hit_reg.get(my_pid, False)
+                        and me.attacks[me.attack].get("self_cast")
+                        and me.anim == me.attacks[me.attack]["frames"] - 1):
+                    apply_effects(me, me, me.attack)
+                    online_hit_reg[my_pid] = True
                 # Dash movement after hit detection
                 for _p in online_players:
                     _p.dash_move(WIDTH, HEIGHT)
@@ -1384,6 +1466,7 @@ while running:
                     elif keys[pygame.K_QUOTE]:          p2.start_attack("block")
 
                 p1.update_attack_timers(); p2.update_attack_timers()
+                p1.update_status_effects(); p2.update_status_effects()
                 if energy: p1.update_energy(); p2.update_energy()
                 _hb1 = p1.get_hitbox()
                 if _hb1 and _hb1.colliderect(p2.rect) and not p1.hit:
@@ -1391,6 +1474,12 @@ while running:
                 _hb2 = p2.get_hitbox()
                 if _hb2 and _hb2.colliderect(p1.rect) and not p2.hit:
                     apply_effects(p2, p1, p2.attack); p2.hit = True
+                for _p in (p1, p2):
+                    if (_p.attack and not _p.hit
+                            and _p.attacks[_p.attack].get("self_cast")
+                            and _p.anim == _p.attacks[_p.attack]["frames"] - 1):
+                        apply_effects(_p, _p, _p.attack)
+                        _p.hit = True
                 p1.dash_move(WIDTH, HEIGHT); p2.dash_move(WIDTH, HEIGHT)
 
         # ================================================================
@@ -1439,6 +1528,14 @@ while running:
                     pygame.draw.circle(screen, _bcol,
                                        (int(_p.x + _p.size // 2), int(_p.y + _p.size // 2)),
                                        _p.size + 8, 4)
+                _seen_s = set()
+                for _seff in _p.status_effects:
+                    _st = _seff["type"]
+                    if _st in STATUS_COLORS and _st not in _seen_s:
+                        _seen_s.add(_st)
+                        pygame.draw.circle(screen, STATUS_COLORS[_st],
+                                           (int(_p.x + _p.size // 2), int(_p.y + _p.size // 2)),
+                                           _p.size + 14 + len(_seen_s) * 6, 3)
 
             # Win overlay
             if win:
@@ -1530,6 +1627,15 @@ while running:
                 pygame.draw.circle(screen, P2_ATTACK_COLORS.get("block", (80, 160, 200)),
                                    (int(p2.x + p2.size // 2), int(p2.y + p2.size // 2)),
                                    p2.size + 8, 4)
+            for _offset, _p in enumerate((p1, p2)):
+                _seen = set()
+                for _seff in _p.status_effects:
+                    _t = _seff["type"]
+                    if _t in STATUS_COLORS and _t not in _seen:
+                        _seen.add(_t)
+                        pygame.draw.circle(screen, STATUS_COLORS[_t],
+                                           (int(_p.x + _p.size // 2), int(_p.y + _p.size // 2)),
+                                           _p.size + 14 + len(_seen) * 6, 3)
 
             p1hp = max(0, p1.hp)
             p2hp = max(0, p2.hp)

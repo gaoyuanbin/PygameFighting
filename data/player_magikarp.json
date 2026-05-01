@@ -1,0 +1,19 @@
+{
+  "id": "magikarp",
+  "name": "MAGIKARP",
+  "maxhp": 10,
+  "speed": 1,
+  "abilities": ["normal", "super", "dash", "regen_burst", "block"],
+  "attacks": {
+    "normal": {"dmg": 1, "radius": 20,  "degree": 20,  "frames": 14, "cooldown": 40, "energy": 10},
+    "super":  {"dmg": 10, "radius": 40, "degree": 50, "frames": 28, "cooldown": 100,"energy": 30},
+    "dash":   {"dmg": 3, "radius": 20,  "degree": 40,  "frames": 22, "cooldown": 50, "speed": 20, "energy": 18}
+  },
+  "colors": {
+    "normal": [255, 150, 30],
+    "super":  [230, 100, 0],
+    "dash":   [255, 200, 0]
+  },
+  "body": [255,127,0],
+  "image": "magikarp.png"
+}

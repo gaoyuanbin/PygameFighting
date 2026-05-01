@@ -1,0 +1,19 @@
+{
+  "id": "slowpoke",
+  "name": "SLOWPOKE",
+  "maxhp": 180,
+  "speed": 5,
+  "abilities": ["normal", "super", "dash", "regen_burst", "block"],
+  "attacks": {
+    "normal": {"dmg": 18, "radius": 65,  "degree": 80,  "frames": 14, "cooldown": 38, "energy": 10},
+    "super":  {"dmg": 45, "radius": 100, "degree": 110, "frames": 28, "cooldown": 100,"energy": 30},
+    "dash":   {"dmg": 20, "radius": 60,  "degree": 90,  "frames": 22, "cooldown": 45, "speed": 20, "energy": 18}
+  },
+  "colors": {
+    "normal": [255, 160, 180],
+    "super":  [230, 100, 130],
+    "dash":   [255, 200, 210]
+  },
+  "body": [220, 130, 160],
+  "image": "slowpoke.png"
+}

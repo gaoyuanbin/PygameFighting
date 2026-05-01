@@ -1,0 +1,19 @@
+{
+  "id": "mewtwo",
+  "name": "MEWTWO",
+  "maxhp": 95,
+  "speed": 11,
+  "abilities": ["normal", "super", "dash", "psystrike", "block"],
+  "attacks": {
+    "normal": {"dmg": 14, "radius": 85,  "degree": 70,  "frames": 9,  "cooldown": 20, "energy": 8},
+    "super":  {"dmg": 30, "radius": 220, "degree": 80,  "frames": 18, "cooldown": 70, "energy": 28},
+    "dash":   {"dmg": 12, "radius": 75,  "degree": 65,  "frames": 14, "cooldown": 28, "speed": 55, "energy": 14}
+  },
+  "colors": {
+    "normal": [200, 140, 255],
+    "super":  [160, 80,  240],
+    "dash":   [220, 180, 255]
+  },
+  "body": [160, 100, 220],
+  "image": "mewtwo.png"
+}

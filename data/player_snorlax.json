@@ -1,0 +1,19 @@
+{
+  "id": "snorlax",
+  "name": "SNORLAX",
+  "maxhp": 220,
+  "speed": 4,
+  "abilities": ["normal", "super", "dash", "slam", "block"],
+  "attacks": {
+    "normal": {"dmg": 22, "radius": 70,  "degree": 90,  "frames": 16, "cooldown": 40, "energy": 10},
+    "super":  {"dmg": 50, "radius": 110, "degree": 120, "frames": 32, "cooldown": 110,"energy": 35},
+    "dash":   {"dmg": 25, "radius": 65,  "degree": 100, "frames": 24, "cooldown": 50, "speed": 18, "energy": 20}
+  },
+  "colors": {
+    "normal": [100, 160, 100],
+    "super":  [60,  120, 60],
+    "dash":   [140, 190, 140]
+  },
+  "body": [80, 130, 80],
+  "image": "snorlax.png"
+}

@@ -1,9 +1,9 @@
 {
-  "id": "scissors",
-  "name": "SCISSORS",
+  "id": "fastdude",
+  "name": "FAST DUDE",
   "maxhp": 80,
   "speed": 13,
-  "abilities": ["normal", "super", "dash", "blink", "block"],
+  "abilities": ["normal", "super", "dash", "block"],
   "attacks": {
     "normal": {"dmg": 10, "radius": 75,  "degree": 60,  "frames": 8,  "cooldown": 18, "energy": 5},
     "super":  {"dmg": 35, "radius": 300, "degree": 45,  "frames": 16, "cooldown": 45, "energy": 25},
@@ -14,5 +14,6 @@
     "super":  [255, 90,  90],
     "dash":   [255, 180, 180]
   },
-  "body": [200, 70, 70]
+  "body": [200, 70, 70],
+  "image": "pikachu.png"
 }

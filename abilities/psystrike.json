@@ -1,0 +1,15 @@
+{
+  "id": "psystrike",
+  "radius": 320,
+  "degree": 320,
+  "frames": 28,
+  "cooldown": 100,
+  "energy": 40,
+  "effects": [
+    {"type": "damage",   "amount": 55},
+    {"type": "knockback","force": 50},
+    {"type": "recoil",   "amount": 20}
+  ],
+  "p1_color": [180, 100, 255],
+  "p2_color": [120, 60,  200]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "regen_burst",
+  "radius": 0,
+  "degree": 360,
+  "frames": 20,
+  "cooldown": 90,
+  "energy": 30,
+  "no_hitbox": true,
+  "self_cast": true,
+  "effects": [
+    {"type": "regen", "duration": 180, "heal_per_tick": 3, "tick_rate": "medium"}
+  ],
+  "p1_color": [100, 255, 180],
+  "p2_color": [60,  200, 130]
+}

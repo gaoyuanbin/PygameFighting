@@ -1,0 +1,27 @@
+{
+  "id": "gengar",
+  "name": "GENGAR",
+  "maxhp": 90,
+  "speed": 11,
+  "abilities": ["normal", "super", "dash", "poison_cloud", "block"],
+  "attacks": {
+    "normal": {"dmg": 8,  "radius": 75,  "degree": 90,  "frames": 10, "cooldown": 22, "energy": 8,
+               "effects": [
+                 {"type": "damage",  "amount": 8},
+                 {"type": "poison",  "duration": 90, "damage_per_tick": 1, "tick_rate": "medium"}
+               ]},
+    "super":  {"dmg": 15, "radius": 200, "degree": 270, "frames": 22, "cooldown": 80, "energy": 28,
+               "effects": [
+                 {"type": "damage",  "amount": 15},
+                 {"type": "poison",  "duration": 300, "damage_per_tick": 2, "tick_rate": "medium"}
+               ]},
+    "dash":   {"dmg": 10, "radius": 70,  "degree": 75,  "frames": 16, "cooldown": 30, "speed": 50, "energy": 12}
+  },
+  "colors": {
+    "normal": [160, 80,  230],
+    "super":  [110, 40,  180],
+    "dash":   [190, 120, 255]
+  },
+  "body": [100, 50, 160],
+  "image": "gengar.png"
+}

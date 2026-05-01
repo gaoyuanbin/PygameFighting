@@ -1,6 +1,6 @@
 {
-  "id": "rock",
-  "name": "ROCK",
+  "id": "golem",
+  "name": "GOLEM",
   "maxhp": 140,
   "speed": 7,
   "abilities": ["normal", "super", "dash", "heavy_strike", "block"],
@@ -14,5 +14,6 @@
     "super":  [160, 160, 160],
     "dash":   [220, 220, 220]
   },
-  "body": [120, 120, 120]
+  "body": [120, 120, 120],
+  "image": "golem.png"
 }

@@ -1,0 +1,19 @@
+{
+  "id": "jolteon",
+  "name": "JOLTEON",
+  "maxhp": 75,
+  "speed": 16,
+  "abilities": ["normal", "super", "dash", "stun_bolt", "block"],
+  "attacks": {
+    "normal": {"dmg": 8,  "radius": 70,  "degree": 65,  "frames": 8,  "cooldown": 18, "energy": 6},
+    "super":  {"dmg": 20, "radius": 160, "degree": 55,  "frames": 14, "cooldown": 55, "energy": 22},
+    "dash":   {"dmg": 10, "radius": 65,  "degree": 60,  "frames": 12, "cooldown": 22, "speed": 70, "energy": 12}
+  },
+  "colors": {
+    "normal": [255, 230, 80],
+    "super":  [255, 200, 20],
+    "dash":   [255, 245, 140]
+  },
+  "body": [230, 190, 40],
+  "image": "jolteon.png"
+}

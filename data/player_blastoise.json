@@ -1,0 +1,19 @@
+{
+  "id": "blastoise",
+  "name": "BLASTOISE",
+  "maxhp": 130,
+  "speed": 7,
+  "abilities": ["normal", "super", "dash", "water_cannon", "block"],
+  "attacks": {
+    "normal": {"dmg": 12, "radius": 80,  "degree": 55,  "frames": 10, "cooldown": 28, "energy": 8},
+    "super":  {"dmg": 28, "radius": 180, "degree": 50,  "frames": 20, "cooldown": 75, "energy": 25},
+    "dash":   {"dmg": 14, "radius": 70,  "degree": 60,  "frames": 18, "cooldown": 35, "speed": 30, "energy": 15}
+  },
+  "colors": {
+    "normal": [100, 200, 255],
+    "super":  [50,  150, 230],
+    "dash":   [140, 220, 255]
+  },
+  "body": [60, 130, 200],
+  "image": "blastoise.png"
+}
